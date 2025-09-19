@@ -16,7 +16,7 @@ class AtlasIntelligentChatManager {
         
         // Voice system properties with enhanced agent differentiation
         this.voiceSystem = {
-            enabled: false,
+            enabled: true,
             agents: {
                 atlas: { 
                     signature: '[ATLAS]', 

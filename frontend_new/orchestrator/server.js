@@ -16,9 +16,10 @@ import atlasStage1 from '../../agent_prompts/atlas/stage1_initial_processing.js'
 import tetyanaStage2 from '../../agent_prompts/tetyana/stage2_execution.js';
 import atlasStage3 from '../../agent_prompts/atlas/stage3_clarification.js';
 import tetyanaStage4 from '../../agent_prompts/tetyana/stage4_retry.js';
-import grishaStage5 from '../../agent_prompts/grisha/stage5_takeover.js';
-import grishaStage6 from '../../agent_prompts/grisha/stage6_verification.js';
-import atlasStage7 from '../../agent_prompts/atlas/stage7_retry_cycle.js';
+import grishaStage5 from '../../agent_prompts/grisha/stage5_diagnosis.js';
+import atlasStage6 from '../../agent_prompts/atlas/stage6_task_adjustment.js';
+import grishaStage7 from '../../agent_prompts/grisha/stage7_verification.js';
+import atlasStage9 from '../../agent_prompts/atlas/stage7_retry_cycle.js';
 import workflowConfig from '../../agent_prompts/workflow_config.js';
 
 const app = express();
@@ -364,31 +365,48 @@ async function executeStageByConfig(stageConfig, userMessage, session, res) {
             );
             break;
             
-        case 5: // Grisha takeover (якщо Тетяна все ще заблокована)
-            const allTetyanaResponses = session.history.filter(r => r.agent === 'tetyana');
-            const allAtlasResponses = session.history.filter(r => r.agent === 'atlas');
+        case 5: // Grisha diagnosis (якщо Тетяна все ще заблокована)
+            const tetyanaAttempts5 = session.history.filter(r => r.agent === 'tetyana').map(r => r.content).join('\n\n');
+            const atlasAttempts5 = session.history.filter(r => r.agent === 'atlas').map(r => r.content).join('\n\n');
             systemPrompt = grishaStage5.GRISHA_STAGE5_SYSTEM_PROMPT;
             userPrompt = grishaStage5.GRISHA_STAGE5_USER_PROMPT(
-                userMessage, 
-                allTetyanaResponses.map(r => r.content).join('\n\n'), 
-                allAtlasResponses[0]?.content || ''
+                userMessage,
+                atlasAttempts5,
+                tetyanaAttempts5
             );
             break;
             
-        case 6: // Grisha result_verification
-            const executionResults = session.history.filter(r => r.agent === 'tetyana').map(r => r.content).join('\n\n');
-            const atlasInitialResponse = session.history.filter(r => r.agent === 'atlas')[0];
-            systemPrompt = grishaStage6.GRISHA_STAGE6_SYSTEM_PROMPT;
-            userPrompt = grishaStage6.GRISHA_STAGE6_USER_PROMPT(userMessage, executionResults, atlasInitialResponse?.content || '');
+        case 6: // Atlas task_adjustment
+            const grishaResponseDiagnosis = session.history.filter(r => r.agent === 'grisha').pop();
+            const currentExecutionHistory = session.history.filter(r => 
+                r.agent === 'tetyana' || r.agent === 'grisha'
+            ).map(r => `${r.agent.toUpperCase()}: ${r.content}`).join('\n\n');
+            systemPrompt = atlasStage6.ATLAS_STAGE6_SYSTEM_PROMPT;
+            userPrompt = atlasStage6.ATLAS_STAGE6_USER_PROMPT(
+                userMessage,
+                currentExecutionHistory,
+                grishaResponseDiagnosis?.content || ''
+            );
             break;
             
-        case 7: // Atlas retry_cycle (координує новий цикл якщо верифікація не пройшла)
+        case 7: // Grisha verification (перевіряє правильність виконання)
+            const executionResults7 = session.history.filter(r => r.agent === 'tetyana').map(r => r.content).join('\n\n');
+            const atlasInitialResponse7 = session.history.filter(r => r.agent === 'atlas')[0];
+            systemPrompt = grishaStage7.GRISHA_STAGE7_SYSTEM_PROMPT;
+            userPrompt = grishaStage7.GRISHA_STAGE7_USER_PROMPT(userMessage, executionResults7, atlasInitialResponse7?.content || '');
+            break;
+            
+        case 8: // System completion (системне завершення)
+            // Системний етап - не потребує промптів
+            return { content: 'Workflow completed', agent: 'system' };
+            
+        case 9: // Atlas retry_cycle (координує новий цикл якщо верифікація не пройшла)
             const grishaResponse = session.history.filter(r => r.agent === 'grisha').pop();
             const allExecutionHistory = session.history.filter(r => 
                 r.agent === 'tetyana' || r.agent === 'grisha'
             ).map(r => `${r.agent.toUpperCase()}: ${r.content}`).join('\n\n');
-            systemPrompt = atlasStage7.ATLAS_STAGE7_SYSTEM_PROMPT;
-            userPrompt = atlasStage7.ATLAS_STAGE7_USER_PROMPT(
+            systemPrompt = atlasStage9.ATLAS_STAGE7_SYSTEM_PROMPT;
+            userPrompt = atlasStage9.ATLAS_STAGE7_USER_PROMPT(
                 userMessage,
                 allExecutionHistory,
                 grishaResponse?.content || ''

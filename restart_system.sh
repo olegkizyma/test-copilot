@@ -161,8 +161,51 @@ stop_service() {
     fi
 }
 
-# Note: Goose executable finding and config setup functions removed
-# Goose Desktop is now managed externally by the user
+# Goose configuration validation and repair functions
+validate_goose_config() {
+    local goose_bin="/opt/homebrew/bin/goose"
+    local config_file="$HOME/.config/goose/config.yaml"
+    
+    if [ ! -f "$config_file" ]; then
+        log_warn "Goose config file not found. Running initial configuration..."
+        return 1
+    fi
+    
+    # Check if provider is configured
+    if ! grep -q "provider:" "$config_file" || ! grep -q "github_copilot:" "$config_file"; then
+        log_warn "Goose provider not properly configured"
+        return 1
+    fi
+    
+    # Check if API key is present
+    if ! grep -q "api_key:" "$config_file"; then
+        log_warn "Goose API key not configured"
+        return 1
+    fi
+    
+    return 0
+}
+
+repair_goose_config() {
+    log_warn "Goose configuration issues detected. Attempting repair..."
+    local goose_bin="/opt/homebrew/bin/goose"
+    
+    if [ ! -x "$goose_bin" ]; then
+        log_error "Goose CLI not available for configuration repair"
+        return 1
+    fi
+    
+    log_info "Running Goose configuration wizard..."
+    log_info "Please follow the prompts to configure GitHub Copilot"
+    
+    if "$goose_bin" configure; then
+        log_success "Goose configuration completed successfully"
+        return 0
+    else
+        log_error "Goose configuration failed"
+        return 1
+    fi
+}
 
 # =============================================================================
 # Service Management Functions
@@ -207,9 +250,15 @@ start_goose_web_server() {
             local response=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:$GOOSE_SERVER_PORT" 2>/dev/null || echo "000")
             if [ "$response" = "200" ]; then
                 log_success "Goose already running on port $GOOSE_SERVER_PORT"
+                # Find and save the existing Goose PID
+                local existing_pid=$(lsof -ti:$GOOSE_SERVER_PORT 2>/dev/null | head -1)
+                if [ -n "$existing_pid" ]; then
+                    echo "$existing_pid" > "$LOGS_DIR/goose_web.pid"
+                    log_info "Saved existing Goose PID: $existing_pid"
+                fi
                 return 0
             else
-                log_error "Port $GOOSE_SERVER_PORT is busy with another service"
+                log_error "Port $GOOSE_SERVER_PORT is busy with another service (HTTP $response)"
                 return 1
             fi
         fi
@@ -223,6 +272,23 @@ start_goose_web_server() {
         return 1
     fi
     
+    # Check Goose configuration before starting
+    log_info "Checking Goose configuration..."
+    if ! "$goose_bin" --version > /dev/null 2>&1; then
+        log_error "Goose CLI is not working properly"
+        return 1
+    fi
+    
+    # Validate Goose configuration
+    if ! validate_goose_config; then
+        log_warn "Goose configuration validation failed"
+        if ! repair_goose_config; then
+            log_error "Failed to repair Goose configuration"
+            log_info "Please run: $goose_bin configure"
+            return 1
+        fi
+    fi
+    
     # Start Goose web server
     (
         cd "$REPO_ROOT"
@@ -230,23 +296,40 @@ start_goose_web_server() {
         echo $! > "$LOGS_DIR/goose_web.pid"
     )
     
-    # Wait for startup
-    sleep 3
+    # Wait for startup with progressive checks
+    log_info "Waiting for Goose to start..."
+    local attempts=0
+    local max_attempts=10
     
-    # Verify it started
-    if [ -f "$LOGS_DIR/goose_web.pid" ] && ps -p $(cat "$LOGS_DIR/goose_web.pid") > /dev/null 2>&1; then
-        local response=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:$GOOSE_SERVER_PORT" 2>/dev/null || echo "000")
-        if [ "$response" = "200" ]; then
-            log_success "Goose Web Server started (PID: $(cat "$LOGS_DIR/goose_web.pid"))"
-            return 0
+    while [ $attempts -lt $max_attempts ]; do
+        sleep 1
+        attempts=$((attempts + 1))
+        
+        # Check if process is still running
+        if [ -f "$LOGS_DIR/goose_web.pid" ] && ps -p $(cat "$LOGS_DIR/goose_web.pid") > /dev/null 2>&1; then
+            # Check if it's responding
+            local response=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:$GOOSE_SERVER_PORT" 2>/dev/null || echo "000")
+            if [ "$response" = "200" ]; then
+                log_success "Goose Web Server started (PID: $(cat "$LOGS_DIR/goose_web.pid"), attempt $attempts)"
+                return 0
+            elif [ "$response" != "000" ]; then
+                log_info "Goose responding with HTTP $response, waiting..."
+            fi
         else
-            log_error "Goose Web Server started but not responding properly"
+            log_error "Goose process died during startup (attempt $attempts)"
+            if [ -f "$LOGS_DIR/goose_web.log" ]; then
+                log_error "Last log lines:"
+                tail -3 "$LOGS_DIR/goose_web.log" | sed 's/^/  /'
+            fi
             return 1
         fi
-    else
-        log_error "Failed to start Goose Web Server"
-        return 1
+    done
+    
+    log_error "Goose Web Server failed to respond after $max_attempts attempts"
+    if [ -f "$LOGS_DIR/goose_web.log" ]; then
+        log_error "Check logs: tail -f $LOGS_DIR/goose_web.log"
     fi
+    return 1
 }
 
 start_tts_service() {
@@ -556,18 +639,99 @@ cmd_clean() {
     log_success "Cleanup completed"
 }
 
+cmd_diagnose() {
+    print_header
+    log_info "Running ATLAS System Diagnostics..."
+    echo ""
+    
+    # Check Goose CLI
+    echo -e "${CYAN}Goose CLI Status:${NC}"
+    echo "─────────────────────────────────────────"
+    local goose_bin="/opt/homebrew/bin/goose"
+    if [ -x "$goose_bin" ]; then
+        local version=$("$goose_bin" --version 2>/dev/null || echo "unknown")
+        echo -e "${GREEN}✓${NC} Goose CLI found: $goose_bin (version: $version)"
+    else
+        echo -e "${RED}✗${NC} Goose CLI not found at $goose_bin"
+        echo "  Install with: brew install block-goose-cli"
+    fi
+    
+    # Check Goose configuration
+    echo ""
+    echo -e "${CYAN}Goose Configuration:${NC}"
+    echo "─────────────────────────────────────────"
+    local config_file="$HOME/.config/goose/config.yaml"
+    if [ -f "$config_file" ]; then
+        echo -e "${GREEN}✓${NC} Config file exists: $config_file"
+        if validate_goose_config; then
+            echo -e "${GREEN}✓${NC} Configuration is valid"
+        else
+            echo -e "${YELLOW}⚠${NC} Configuration needs attention"
+        fi
+        
+        # Show key config values
+        if grep -q "provider:" "$config_file"; then
+            local provider=$(grep "provider:" "$config_file" | head -1 | cut -d: -f2 | tr -d ' ')
+            echo "  Provider: $provider"
+        fi
+        if grep -q "model:" "$config_file"; then
+            local model=$(grep "model:" "$config_file" | head -1 | cut -d: -f2 | tr -d ' ')
+            echo "  Model: $model"
+        fi
+    else
+        echo -e "${RED}✗${NC} Config file not found"
+        echo "  Run: $goose_bin configure"
+    fi
+    
+    # Check ports
+    echo ""
+    echo -e "${CYAN}Port Status:${NC}"
+    echo "─────────────────────────────────────────"
+    for port_info in "Goose:$GOOSE_SERVER_PORT" "Frontend:$FRONTEND_PORT" "Orchestrator:$ORCHESTRATOR_PORT" "Recovery:$RECOVERY_PORT" "TTS:$TTS_PORT"; do
+        local name=$(echo "$port_info" | cut -d: -f1)
+        local port=$(echo "$port_info" | cut -d: -f2)
+        
+        if check_port "$port"; then
+            echo -e "${GREEN}✓${NC} Port $port ($name) is available"
+        else
+            echo -e "${YELLOW}⚠${NC} Port $port ($name) is in use"
+            local pid=$(lsof -ti:$port 2>/dev/null || echo "unknown")
+            if [ "$pid" != "unknown" ]; then
+                local process=$(ps -p $pid -o comm= 2>/dev/null || echo "unknown")
+                echo "  Process: $process (PID: $pid)"
+            fi
+        fi
+    done
+    
+    # Check dependencies
+    echo ""
+    echo -e "${CYAN}Dependencies:${NC}"
+    echo "─────────────────────────────────────────"
+    for cmd in curl lsof ps node python3 npm; do
+        if command -v "$cmd" >/dev/null 2>&1; then
+            echo -e "${GREEN}✓${NC} $cmd is available"
+        else
+            echo -e "${RED}✗${NC} $cmd is missing"
+        fi
+    done
+    
+    echo ""
+    log_success "Diagnostics completed"
+}
+
 cmd_help() {
     print_header
-    echo "Usage: $0 {start|stop|restart|status|logs|clean|help}"
+    echo "Usage: $0 {start|stop|restart|status|logs|clean|diagnose|help}"
     echo ""
     echo "Commands:"
-    echo "  start    - Start all ATLAS services"
-    echo "  stop     - Stop all ATLAS services"
-    echo "  restart  - Restart all ATLAS services"
-    echo "  status   - Show status of all services"
-    echo "  logs     - Follow logs (optionally specify service)"
-    echo "  clean    - Archive and clean log files"
-    echo "  help     - Show this help message"
+    echo "  start     - Start all ATLAS services"
+    echo "  stop      - Stop all ATLAS services"
+    echo "  restart   - Restart all ATLAS services"
+    echo "  status    - Show status of all services"
+    echo "  logs      - Follow logs (optionally specify service)"
+    echo "  clean     - Archive and clean log files"
+    echo "  diagnose  - Run system diagnostics"
+    echo "  help      - Show this help message"
     echo ""
     echo "Environment Variables:"
     echo "  GOOSE_SERVER_PORT     - Goose server port to connect to (default: 3000)"
@@ -583,6 +747,7 @@ cmd_help() {
     echo ""
     echo "Examples:"
     echo "  $0 start                    # Start system"
+    echo "  $0 diagnose                 # Check system health"
     echo "  $0 logs orchestrator        # Follow orchestrator logs"
     echo "  FORCE_FREE_PORTS=true $0 start  # Start and force free ports"
     echo ""
@@ -610,6 +775,9 @@ case "${1:-help}" in
         ;;
     clean)
         cmd_clean
+        ;;
+    diagnose)
+        cmd_diagnose
         ;;
     help|--help|-h)
         cmd_help

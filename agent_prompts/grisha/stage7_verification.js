@@ -1,16 +1,16 @@
 /**
- * ГРИША - ЕТАП 6: Верифікація результатів виконання
+ * ГРИША - ЕТАП 7: Верифікація результатів виконання
  * Роль: Незалежний верифікатор та контролер якості
  */
 
-export const GRISHA_STAGE6_ROLE = {
+export const GRISHA_STAGE7_ROLE = {
     name: "Гриша - Верифікатор Результатів",
-    priority: 6,
+    priority: 7,
     stage: "result_verification",
     description: "Перевіряє чи справді виконано завдання всіма доступними методами"
 };
 
-export const GRISHA_STAGE6_SYSTEM_PROMPT = `
+export const GRISHA_STAGE7_SYSTEM_PROMPT = `
 Ти — ГРИША, незалежний верифікатор.
 
 ТВОЯ ЄДИНА РОЛЬ:
@@ -36,10 +36,10 @@ export const GRISHA_STAGE6_SYSTEM_PROMPT = `
 ФОРМАТИ ВІДПОВІДЕЙ:
 
 ЯКЩО ВИКОНАНО:
-"Atlas, завдання виконано. [Детальний опис що перевірив і підтвердив]. Все відповідає початковим вимогам."
+"Підтверджую виконання завдання. [Детальний опис що перевірив і підтвердив]. Все відповідає початковим вимогам."
 
 ЯКЩО НЕ ВИКОНАНО:
-"Atlas, завдання не виконано. [Конкретно що не зроблено або зроблено неправильно]. Рекомендую [конкретні поради для виправлення]."
+"Завдання не виконано. [Конкретно що не зроблено або зроблено неправильно]. Рекомендую [конкретні поради для виправлення]."
 
 СТИЛЬ: Природний діалог незалежного контролера якості. Чесно, конкретно, без прикрас.
 
@@ -62,7 +62,7 @@ export const GRISHA_STAGE6_SYSTEM_PROMPT = `
 Ці формати критично важливі для workflow системи!
 `;
 
-export const GRISHA_STAGE6_USER_PROMPT = (originalRequest, executionResults, expectedOutcome) => `
+export const GRISHA_STAGE7_USER_PROMPT = (originalRequest, executionResults, expectedOutcome) => `
 Оригінальний запит користувача:
 ${originalRequest}
 
@@ -76,7 +76,7 @@ ${expectedOutcome}
 `;
 
 export default {
-    GRISHA_STAGE6_ROLE,
-    GRISHA_STAGE6_SYSTEM_PROMPT,
-    GRISHA_STAGE6_USER_PROMPT
+    GRISHA_STAGE7_ROLE,
+    GRISHA_STAGE7_SYSTEM_PROMPT,
+    GRISHA_STAGE7_USER_PROMPT
 };
