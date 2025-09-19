@@ -24,7 +24,7 @@ make start
 
 - **Єдине централізоване управління** - один скрипт для всієї системи
 - **Інтеграція з Goose Desktop** - використовує десктопну версію як сервер
-- **3 інтелектуальних агенти**: Atlas (виконавець), Тетяна (координатор), Гриша (перевіряючий)
+- **3 інтелектуальних агенти**: Atlas (координатор), Тетяна (виконавець), Гриша (верифікатор)
 - **Автоматична обробка уточнень** - Atlas автоматично бере на себе управління при потребі уточнень
 - **Реальний TTS** - підтримка українського Text-to-Speech
 - **Централізоване управління залежностями**
@@ -88,153 +88,160 @@ FORCE_FREE_PORTS=true       # Автоматично звільняти порт
 
 ### Multi-Agent Framework
 
-- **Atlas Agent** (Gemini) - Strategic planning and high-level coordination
-- **Grisha Agent** (Mistral) - Technical implementation and code generation
-- **Tetiana Agent** (Goose) - Quality assurance and validation
-- **Recovery Agent** (Python) - Intelligent failure analysis and adaptive recovery
+Всі агенти працюють через Goose Engine з GitHub Copilot:
 
-## Intelligent Features
+- **🧠 ATLAS Agent** (зелений) - Координатор, стратег, куратор завдань
+- **💪 TETYANA Agent** (блакитний) - Основний виконавець завдань
+- **🛡️ GRISHA Agent** (жовтий) - Верифікатор, контроль якості результатів
 
-### Failure Recovery System
+### Workflow етапи:
+1. **Stage 1**: ATLAS - Початкова обробка (формалізація завдання)
+2. **Stage 2**: TETYANA - Виконання завдання  
+3. **Stage 3**: ATLAS - Уточнення (за потреби)
+4. **Stage 4**: TETYANA - Повторне виконання з уточненнями
+5. **Stage 5**: GRISHA - Діагностика (якщо блокування)
+6. **Stage 6**: ATLAS - Корекція завдання  
+7. **Stage 7**: GRISHA - Верифікація результатів ✅
+8. **Stage 8**: SYSTEM - Завершення workflow
+9. **Stage 9**: ATLAS - Новий цикл (якщо потрібно)
 
-The system includes advanced failure recovery with 7 failure types and 7 recovery strategies:
+## 🎯 Ключові особливості
 
-**Failure Types:**
-- Context limit violations
-- Rate limit exceeded  
-- Agent communication failures
-- Resource exhaustion
-- Authentication errors
-- Network connectivity issues
-- Execution timeouts
+### Автоматична система відмовостійкості:
+- **WebSocket інтеграція з Goose** - timeout 120 секунд, retry механізм
+- **Token limit захист** - автоматичне обрізання тексту до 2000 символів
+- **Goose API error handling** - 3 спроби з затримкою 1 секунда
+- **HTTP to WebSocket fallback** - автоматичне перемикання при 404 помилках
 
-**Recovery Strategies:**
-- Context optimization and summarization
-- Exponential backoff with jitter
-- Agent failover and redundancy
-- Resource reallocation
-- Credential refresh and re-authentication
-- Connection retry with circuit breaker
-- Task decomposition and parallel execution
+### Ukrainian TTS система:
+- **Множинні голоси**: dmytro, tetiana, mykyta, oleksa
+- **Реальний синтез мовлення** - не mock-режим
+- **Голосова система агентів** - кожен агент має свій голос
+- **Apple Silicon оптимізація** - MPS device для нейронних мереж
 
-### Adaptive Learning
+### Централізоване управління:
+- **restart_system.sh** - єдиний скрипт для всієї системи
+- **config.yaml** - головний конфігураційний файл
+- **Автоматична діагностика** - вбудована система перевірок
+- **Архівування невикористаних файлів** - очищення структури проекту
 
-- **Performance Monitoring** - Real-time tracking of agent efficiency
-- **Pattern Recognition** - Identification of recurring issues and optimal solutions
-- **Strategy Optimization** - Continuous improvement of recovery approaches
-- **Resource Management** - Dynamic allocation based on workload patterns
+## 🚀 Швидкий старт
 
-## Quick Start
+### Передумови
 
-### Prerequisites
-
-- Python 3.8+
+- macOS (Apple Silicon або Intel)
+- Python 3.9+
 - Node.js 16+
-- Virtual environment support
+- Goose Desktop або Goose CLI
 
-### Installation
+### Установка
 
-1. **Environment Setup**
+1. **Встановити залежності**
 ```bash
-cd frontend
-source setup_env.sh
+./install.sh
 ```
 
-2. **Start Core Services**
+2. **Налаштувати Goose** (за потреби)
 ```bash
-# Frontend with intelligent recovery
-cd frontend
-python atlas_minimal_live.py
-
-# Orchestrator (separate terminal)
-cd frontend_new
-bash start_server.sh
+/opt/homebrew/bin/goose configure
 ```
 
-3. **Access Interface**
-- Web Interface: http://localhost:3000
-- Orchestrator API: http://localhost:5101
-- Recovery Bridge: ws://localhost:5102
-
-### Configuration
-
-The system is entirely configuration-free and self-adapting. All parameters are determined intelligently based on:
-
-- Current system load
-- Historical performance data
-- Real-time resource availability
-- Agent capability assessment
-
-## Development
-
-### Project Structure
-
-```
-/
-├── frontend/           # Python intelligent recovery system
-├── frontend_new/       # Node.js orchestrator
-├── goose/             # Goose CLI integration
-├── logs/              # Runtime logs and monitoring
-├── scripts/           # Deployment and maintenance
-└── arhiv/             # Archived legacy components
+3. **Запустити систему**
+```bash
+./restart_system.sh start
 ```
 
-### Key Files
+### Доступ до системи
+- **Веб-інтерфейс**: http://localhost:5001
+- **Goose Server**: http://localhost:3000  
+- **Orchestrator API**: http://localhost:5101
+- **Recovery Bridge**: ws://localhost:5102
 
-- `frontend/intelligent_recovery.py` - Core recovery system
-- `frontend_new/app/orchestrator.py` - Agent coordination
-- `frontend/recovery_bridge.py` - WebSocket integration
-- `frontend/env_manager.py` - Environment management
+### Конфігурація
 
-## Monitoring
+Вся конфігурація системи знаходиться в файлі `config.yaml`. Система підтримує:
 
-### System Health
+- Автоматичне налаштування портів
+- Конфігурацію агентів та їх ролей
+- TTS налаштування з підтримкою українських голосів
+- Workflow параметри та таймаути
 
-The system provides comprehensive monitoring through:
+## 📁 Структура проекту
 
-- **Real-time Dashboards** - Agent status and performance metrics
-- **Failure Analytics** - Detailed analysis of recovery events
-- **Resource Utilization** - CPU, memory, and network usage
-- **Agent Communication** - Inter-agent message flows
+```
+atlas4/
+├── restart_system.sh          # 🎛️ Головний скрипт управління
+├── config.yaml                # ⚙️ Конфігурація системи
+├── install.sh                 # 📦 Скрипт установки
+├── agent_prompts/             # 🧠 Промпти та ролі агентів
+├── frontend_new/              # 🌐 Веб-інтерфейс та оркестратор
+├── ukrainian-tts/             # 🔊 TTS система
+├── fallback_llm/              # 🤖 Резервний LLM
+├── scripts/                   # 🛠️ Допоміжні скрипти
+├── logs/                      # 📝 Логування системи
+└── _UNUSED_FILES/             # 🗃️ Архів старих файлів
+```
 
-### Logging
+### Ключові файли
 
-All system activities are logged with intelligent categorization:
+- `restart_system.sh` - Управління всією системою
+- `config.yaml` - Головна конфігурація
+- `agent_prompts/workflow_config.js` - Конфігурація workflow
+- `frontend_new/orchestrator/server.js` - Координація агентів
+- `frontend_new/app/atlas_server.py` - Веб-інтерфейс
+- `ukrainian-tts/tts_server.py` - TTS сервер
 
-- `logs/recovery.log` - Failure recovery events
-- `logs/orchestrator.log` - Agent coordination
-- `logs/performance.log` - System metrics
-- `logs/errors.log` - Error analysis
+## 📊 Моніторинг та діагностика
 
-## Advanced Features
+### Статус системи
 
-### Intelligent Context Management
+```bash
+./restart_system.sh status    # Статус всіх сервісів
+./restart_system.sh diagnose  # Повна діагностика
+./restart_system.sh logs      # Перегляд логів
+```
 
-- **Dynamic Summarization** - Automatic context compression when limits approached
-- **Priority-based Retention** - Important information preserved during context reduction
-- **Multi-level Caching** - Efficient storage and retrieval of processed data
+### Логування
 
-### Adaptive Resource Scaling
+Система веде детальні логи всіх компонентів:
 
-- **Load Balancing** - Automatic distribution of tasks across agents
-- **Resource Prediction** - Proactive scaling based on usage patterns  
-- **Efficiency Optimization** - Continuous tuning of system parameters
+- `logs/orchestrator.log` - Логи оркестратора та workflow
+- `logs/frontend.log` - Логи веб-інтерфейсу
+- `logs/goose_web.log` - Логи Goose сервера
+- `logs/tts.log` - Логи TTS системи
+- `logs/recovery_bridge.log` - Логи мостового сервісу
 
-## Security
+### Команди діагностики
 
-- **Zero-trust Architecture** - All communications authenticated and encrypted
-- **Credential Management** - Automatic rotation and secure storage
-- **Access Control** - Role-based permissions with intelligent adaptation
-- **Audit Logging** - Complete tracking of system activities
+```bash
+# Повна діагностика
+./restart_system.sh diagnose
 
-## Support
+# Перевірка конфігурації Goose
+./check_goose_config.sh
 
-For issues or questions:
+# Переконфігурація Goose (за потреби)
+/opt/homebrew/bin/goose configure
 
-1. Check the intelligent recovery logs for automatic resolution
-2. Review system health dashboard for performance insights
-3. Consult the adaptive learning recommendations
-4. Contact the development team for advanced configuration
+# Очищення логів
+./restart_system.sh clean
+```
+
+## 🔧 Підтримка та налагодження
+
+### Відомі проблеми та рішення:
+
+1. **Goose WebSocket timeout** - збільшено до 120 секунд
+2. **Token limit exceeded** - автоматичне обрізання до 2000 символів  
+3. **Authentication issues** - потрібна переавторизація GitHub
+4. **Port conflicts** - автоматичне звільнення зайнятих портів
+
+### Для вирішення проблем:
+
+1. Перевірте статус системи: `./restart_system.sh status`
+2. Запустіть діагностику: `./restart_system.sh diagnose` 
+3. Перегляньте логи: `./restart_system.sh logs`
+4. Перезапустіть систему: `./restart_system.sh restart`
 
 ## License
 
@@ -242,4 +249,4 @@ This project is licensed under MIT License - see LICENSE file for details.
 
 ---
 
-*ATLAS System - Fully Intelligent, Zero-Configuration Multi-Agent Orchestration*
+*ATLAS v4.0 - Adaptive Task and Learning Assistant System with Ukrainian TTS*

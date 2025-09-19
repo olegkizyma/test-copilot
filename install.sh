@@ -151,12 +151,35 @@ mkdir -p $HOME/.local/share/goose/sessions
 echo "✅ Directories created"
 
 echo ""
-echo "📝 Configuration reminders:"
+echo "🔧 Final system configuration..."
+
+# Check if config.yaml exists and is properly configured
+if [ -f "config.yaml" ]; then
+    echo "✅ System config.yaml found"
+else
+    echo "⚠️  System config.yaml not found - using defaults"
+fi
+
+# Run configuration check
+if [ -f "check_goose_config.sh" ]; then
+    echo "🔍 Running Goose configuration check..."
+    ./check_goose_config.sh
+else
+    echo "⚠️  Configuration check script not found"
+fi
+
 echo ""
-echo "1. Set your GitHub Copilot token in goose/goose/config.yaml:"
-echo "   GITHUB_COPILOT_TOKEN: YOUR_TOKEN_HERE"
+echo "📝 Configuration notes:"
 echo ""
-echo "2. Configure environment variables (optional):"
+echo "1. Configure Goose authentication:"
+echo "   /opt/homebrew/bin/goose configure"
+echo ""
+echo "2. All system settings are in config.yaml"
+echo ""
+echo "3. For GitHub Copilot, you may need device authentication:"
+echo "   Visit: https://github.com/login/device"
+echo ""
+echo "4. Environment variables (optional):"
 echo "   export GOOSE_DESKTOP_PATH=/Applications/Goose.app/Contents/MacOS/goose"
 echo "   export REAL_TTS_MODE=true"
 echo "   export TTS_DEVICE=mps"
