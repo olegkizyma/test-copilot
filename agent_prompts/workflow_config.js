@@ -79,18 +79,7 @@ export const WORKFLOW_CONDITIONS = {
         if (!response || !response.content) return false;
         if (response.agent !== 'tetyana') return false;
         
-        const text = response.content.toLowerCase();
-        // Спочатку швидка перевірка ключових слів
-        const needsClarification = text.includes('уточнення') || 
-               text.includes('потрібно знати') || 
-               text.includes('не вистачає') ||
-               text.includes('незрозуміло') ||
-               text.includes('не можу виконати') ||
-               text.includes('треба більше інформації');
-        
-        if (!needsClarification) return false;
-        
-        // Тільки якщо є підозра - використовуємо AI
+        // Повністю покладаємося на AI аналіз без фільтрів
         const aiAnalysis = await analyzeAgentResponse('tetyana', response.content, 'clarification_needed');
         return aiAnalysis.predicted_state === 'needs_clarification';
     },
@@ -98,6 +87,7 @@ export const WORKFLOW_CONDITIONS = {
     async atlas_provided_clarification(response) {
         if (!response || !response.agent) return false;
         if (response.agent !== 'atlas') return false;
+        
         const aiAnalysis = await analyzeAgentResponse('atlas', response.content, 'clarification_provided');
         return aiAnalysis.predicted_state === 'clarified';
     },
@@ -106,21 +96,9 @@ export const WORKFLOW_CONDITIONS = {
         if (!response || !response.content) return false;
         if (response.agent !== 'tetyana') return false;
         
-        const text = response.content.toLowerCase();
-        // Швидка перевірка позитивних індикаторів завершення
-        const completed = text.includes('завдання виконала') || 
-               text.includes('завдання виконано') || 
-               text.includes('створена') ||
-               text.includes('створила') ||
-               text.includes('готово') ||
-               text.includes('зроблено') ||
-               text.includes('успішно') ||
-               (text.includes('файл') && text.includes('відкрито'));
-        
-        if (!completed) return false;
-        
-        // AI аналіз для підтвердження
+        // Тільки AI аналіз - ніяких ключових слів!
         const aiAnalysis = await analyzeAgentResponse('tetyana', response.content, 'task_completion');
+        console.log(`[WORKFLOW] Tetyana completion analysis: ${aiAnalysis.predicted_state}, confidence: ${aiAnalysis.confidence}`);
         return aiAnalysis.predicted_state === 'completed';
     },
 
@@ -128,17 +106,8 @@ export const WORKFLOW_CONDITIONS = {
         if (!response || !response.content) return false;
         if (response.agent !== 'atlas') return false;
         
-        const text = response.content.toLowerCase();
-        // Швидка перевірка підтвердження завершення
-        const confirmed = text.includes('завдання повністю виконано') || 
-               text.includes('додаткових дій не потрібно') || 
-               text.includes('все готово') ||
-               text.includes('завершено успішно');
-        
-        if (!confirmed) return false;
-        
-        // AI аналіз для підтвердження
         const aiAnalysis = await analyzeAgentResponse('atlas', response.content, 'completion_confirmation');
+        console.log(`[WORKFLOW] Atlas completion confirmation: ${aiAnalysis.predicted_state}, confidence: ${aiAnalysis.confidence}`);
         return aiAnalysis.predicted_state === 'confirmed_complete';
     },
 
@@ -147,15 +116,6 @@ export const WORKFLOW_CONDITIONS = {
         const latestResponse = responses[responses.length - 1];
         if (!latestResponse || latestResponse.agent !== 'tetyana') return false;
         
-        const text = latestResponse.content.toLowerCase();
-        // Швидка перевірка блокування
-        const blocked = text.includes('не можу') ||
-               text.includes('неможливо') ||
-               text.includes('все одно не зрозуміло') ||
-               text.includes('помилка');
-        
-        if (!blocked) return false;
-        
         const aiAnalysis = await analyzeAgentResponse('tetyana', latestResponse.content, 'block_detection');
         return aiAnalysis.predicted_state === 'blocked';
     },
@@ -163,18 +123,6 @@ export const WORKFLOW_CONDITIONS = {
     async verification_failed(response) {
         if (!response || !response.content) return false;
         if (response.agent !== 'grisha' || response.stage !== 'stage6_verification') return false;
-        
-        const text = response.content.toLowerCase();
-        // Швидка перевірка невдалої верифікації
-        const failed = text.includes('не підтверджено') || 
-               text.includes('❌') ||
-               text.includes('проблеми') ||
-               text.includes('не виконано') ||
-               text.includes('відправляю на доопрацювання') ||
-               text.includes('потрібно більше') ||
-               text.includes('завдання виконано неповністю');
-        
-        if (!failed) return false;
         
         const aiAnalysis = await analyzeAgentResponse('grisha', response.content, 'verification_check');
         return aiAnalysis.predicted_state === 'verification_failed';
@@ -214,34 +162,86 @@ async function callAIModel({ agent, stage, response }) {
     
     // Створюємо спеціалізовані промпти для кожного типу аналізу
     const systemPrompts = {
-        clarification_needed: `You are analyzing whether Tetyana (agent assistant) needs clarification for a task. 
-        Return JSON: {"predicted_state": "needs_clarification" | "clear_to_proceed", "confidence": 0.0-1.0}
+        clarification_needed: `You are analyzing Ukrainian text from Tetyana (virtual assistant) to determine if she needs clarification.
+
+        Return ONLY this JSON format: {"predicted_state": "needs_clarification" | "clear_to_proceed", "confidence": 0.0-1.0}
+
+        NEEDS CLARIFICATION if Tetyana says:
+        - She doesn't understand something (не розумію, незрозуміло)
+        - Needs more information (потрібно більше інформації, не вистачає)  
+        - Cannot complete task due to unclear instructions (не можу виконати)
+        - Asks questions or requests clarification (уточнення, як саме?)
+
+        CLEAR TO PROCEED if Tetyana:
+        - Reports task completion (готово, виконано, зроблено)
+        - Lists specific steps she took
+        - Says she's ready or waiting for next task
+        - Provides concrete results`,
         
-        Tetyana needs clarification if she says she doesn't understand, needs more info, can't proceed, or asks questions.
-        If she says she completed/did something, she does NOT need clarification.`,
+        task_completion: `You are analyzing Ukrainian text from Tetyana to determine if she completed a task.
+
+        Return ONLY this JSON format: {"predicted_state": "completed" | "incomplete", "confidence": 0.0-1.0}
+
+        TASK IS COMPLETED if Tetyana:
+        - Says "Готово" and lists what she did
+        - Reports specific actions taken (відкрила, створила, записала, обчислила)
+        - Provides concrete results or outcomes  
+        - States task is done/finished (виконано, зроблено)
+        - Describes successful completion of all requested steps
+
+        TASK IS INCOMPLETE if Tetyana:
+        - Says she cannot do something (не можу)
+        - Reports errors or problems
+        - Asks for clarification or help
+        - Only partially completed the request
+
+        CRITICAL: If Tetyana says "Готово" and describes specific completed actions, this is ALWAYS "completed".`,
         
-        task_completion: `You are analyzing whether Tetyana successfully completed a task.
-        Return JSON: {"predicted_state": "completed" | "incomplete", "confidence": 0.0-1.0}
+        completion_confirmation: `You are analyzing Ukrainian text from Atlas to see if he confirmed task completion.
+
+        Return ONLY this JSON format: {"predicted_state": "confirmed_complete" | "not_confirmed", "confidence": 0.0-1.0}
+
+        CONFIRMED COMPLETE if Atlas says:
+        - Task is fully completed (повністю виконано)
+        - No additional actions needed (додаткових дій не потрібно) 
+        - Everything is ready/done (все готово)
+        - Task finished successfully (завершено успішно)
+
+        NOT CONFIRMED if Atlas:
+        - Gives new instructions or tasks
+        - Says more work is needed
+        - Requests modifications or changes`,
         
-        Task is completed if Tetyana reports she finished, created files/folders, or says "ready". 
-        Look for words like: виконала, створила, готово, успішно, завершила, зроблено.`,
+        verification_check: `You are analyzing Ukrainian text from Grisha's verification response.
+
+        Return ONLY this JSON format: {"predicted_state": "verification_failed" | "verification_passed", "confidence": 0.0-1.0}
+
+        VERIFICATION FAILED if Grisha says:
+        - Task not confirmed (не підтверджено)
+        - Found problems or issues (проблеми, помилки) 
+        - Needs rework (потрібно переробити)
+        - Task incomplete (не виконано, неповністю)
+
+        VERIFICATION PASSED if Grisha says:
+        - Task confirmed/approved (підтверджено)
+        - Everything correct (все правильно)
+        - Successfully completed (успішно виконано)
+        - Meets requirements (відповідає вимогам)`,
         
-        completion_confirmation: `You are analyzing whether Atlas confirmed task completion.
-        Return JSON: {"predicted_state": "confirmed_complete" | "not_confirmed", "confidence": 0.0-1.0}
-        
-        Atlas confirms completion if he says task is fully done, no additional actions needed, everything ready.
-        Look for: "повністю виконано", "додаткових дій не потрібно", "все готово".`,
-        
-        verification_check: `You are analyzing Grisha's verification response.
-        Return JSON: {"predicted_state": "verification_failed" | "verification_passed", "confidence": 0.0-1.0}
-        
-        Verification FAILED if Grisha says: not confirmed, problems, needs rework, incomplete.
-        Verification PASSED if Grisha says: confirmed, successful, task completed correctly.`,
-        
-        block_detection: `You are analyzing if Tetyana is blocked and cannot proceed.
-        Return JSON: {"predicted_state": "blocked" | "not_blocked", "confidence": 0.0-1.0}
-        
-        Tetyana is blocked if she says she cannot do something, impossible, unclear, errors occurred.`
+        block_detection: `You are analyzing Ukrainian text to see if Tetyana is blocked.
+
+        Return ONLY this JSON format: {"predicted_state": "blocked" | "not_blocked", "confidence": 0.0-1.0}
+
+        BLOCKED if Tetyana says:
+        - Cannot do something (не можу зробити)
+        - It's impossible (неможливо)
+        - Doesn't know how (не знаю як)
+        - Encountered errors (помилка, збій)
+
+        NOT BLOCKED if Tetyana:
+        - Reports successful completion
+        - Describes what she did
+        - Says task is ready/done`
     };
 
     const systemPrompt = systemPrompts[stage] || `Analyze the agent response and return JSON with predicted_state and confidence.`;
@@ -276,19 +276,57 @@ async function callAIModel({ agent, stage, response }) {
         try {
             return JSON.parse(content);
         } catch (e) {
-            // Fallback якщо JSON некоректний
-            return {
-                predicted_state: stage.includes('completion') ? 'completed' : 'needs_analysis',
-                confidence: 0.5
-            };
+            console.warn('AI JSON Parse Error:', e, 'Content:', content);
+            // Fallback якщо JSON некоректний - робимо локальний аналіз
+            return localFallbackAnalysis(stage, response);
         }
     } catch (error) {
         console.error('AI Model Error:', error);
         // Fallback для локального аналізу
-        return {
-            predicted_state: response.toLowerCase().includes('виконала') ? 'completed' : 'needs_analysis',
-            confidence: 0.7
-        };
+        return localFallbackAnalysis(stage, response);
+    }
+}
+
+// Локальний fallback аналіз для української мови
+function localFallbackAnalysis(stage, response) {
+    const text = response.toLowerCase();
+    
+    switch (stage) {
+        case 'task_completion':
+            // Позитивні індикатори завершення
+            if (text.includes('готово') && 
+                (text.includes('створила') || text.includes('відкрила') || 
+                 text.includes('записала') || text.includes('обчислила') ||
+                 text.includes('виконала') || text.includes('зроблено'))) {
+                return { predicted_state: 'completed', confidence: 0.85 };
+            }
+            if (text.includes('не можу') || text.includes('помилка')) {
+                return { predicted_state: 'incomplete', confidence: 0.8 };
+            }
+            return { predicted_state: 'incomplete', confidence: 0.6 };
+            
+        case 'clarification_needed':
+            if (text.includes('уточнення') || text.includes('не розумію') || 
+                text.includes('незрозуміло') || text.includes('як саме')) {
+                return { predicted_state: 'needs_clarification', confidence: 0.8 };
+            }
+            if (text.includes('готово') || text.includes('виконала')) {
+                return { predicted_state: 'clear_to_proceed', confidence: 0.8 };
+            }
+            return { predicted_state: 'clear_to_proceed', confidence: 0.6 };
+            
+        case 'verification_check':
+            if (text.includes('підтверджено') || text.includes('все правильно') ||
+                text.includes('успішно виконано')) {
+                return { predicted_state: 'verification_passed', confidence: 0.8 };
+            }
+            if (text.includes('не підтверджено') || text.includes('проблеми')) {
+                return { predicted_state: 'verification_failed', confidence: 0.8 };
+            }
+            return { predicted_state: 'verification_passed', confidence: 0.5 };
+            
+        default:
+            return { predicted_state: 'needs_analysis', confidence: 0.3 };
     }
 }
 
