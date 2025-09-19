@@ -55,19 +55,19 @@ export const WORKFLOW_STAGES = [
         maxRetries: 1
     },
     {
-        id: 'stage7_completion_check',
-        name: 'Перевірка завершення завдання',
+        id: 'stage7_task_completion_final',
+        name: 'Фінальне завершення після підтвердження Гриші',
         agent: 'system',
-        description: 'Перевіряємо чи завдання дійсно завершено успішно',
-        required: true,
-        condition: 'tetyana_completed_task',
+        description: 'Завдання успішно завершено та підтверджено Гришею',
+        required: false,
+        condition: 'verification_passed',
         maxRetries: 0
     },
     {
         id: 'stage8_retry_cycle',
         name: 'Новий цикл після невдалої верифікації',
         agent: 'atlas',
-        description: 'Atlas координує новий цикл якщо верифікація не пройшла',
+        description: 'Atlas змінює концепцію і координує новий цикл після невдалої верифікації Гриші',
         required: false,
         condition: 'verification_failed',
         maxRetries: 2
@@ -102,14 +102,6 @@ export const WORKFLOW_CONDITIONS = {
         return aiAnalysis.predicted_state === 'completed';
     },
 
-    async atlas_confirmed_completion(response) {
-        if (!response || !response.content) return false;
-        if (response.agent !== 'atlas') return false;
-        
-        const aiAnalysis = await analyzeAgentResponse('atlas', response.content, 'completion_confirmation');
-        console.log(`[WORKFLOW] Atlas completion confirmation: ${aiAnalysis.predicted_state}, confidence: ${aiAnalysis.confidence}`);
-        return aiAnalysis.predicted_state === 'confirmed_complete';
-    },
 
     async tetyana_still_blocked(responses) {
         if (!Array.isArray(responses)) return false;
@@ -125,7 +117,17 @@ export const WORKFLOW_CONDITIONS = {
         if (response.agent !== 'grisha' || response.stage !== 'stage6_verification') return false;
         
         const aiAnalysis = await analyzeAgentResponse('grisha', response.content, 'verification_check');
+        console.log(`[WORKFLOW] Grisha verification: ${aiAnalysis.predicted_state}, confidence: ${aiAnalysis.confidence}`);
         return aiAnalysis.predicted_state === 'verification_failed';
+    },
+
+    async verification_passed(response) {
+        if (!response || !response.content) return false;
+        if (response.agent !== 'grisha' || response.stage !== 'stage6_verification') return false;
+        
+        const aiAnalysis = await analyzeAgentResponse('grisha', response.content, 'verification_check');
+        console.log(`[WORKFLOW] Grisha verification: ${aiAnalysis.predicted_state}, confidence: ${aiAnalysis.confidence}`);
+        return aiAnalysis.predicted_state === 'verification_passed';
     }
 };
 
@@ -140,10 +142,13 @@ export const WORKFLOW_CONFIG = {
     shortStatusUpdates: true, // Короткі озвучення для користувача
     // КРИТИЧНО: Зупиняти цикли при успішному завершенні
     stopOnTaskCompletion: true,
-    // Умови для зупинки циклів
+    // Умови для зупинки циклів - тільки після підтвердження Гриші!
     completionConditions: [
-        'tetyana_completed_task',
-        'atlas_confirmed_completion'
+        'verification_passed'  // Тільки Гриша може підтвердити завершення
+    ],
+    // Умови для нового циклу
+    retryCycleConditions: [
+        'verification_failed'  // Гриша не підтвердив - новий цикл
     ]
 };
 
