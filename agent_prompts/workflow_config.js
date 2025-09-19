@@ -6,128 +6,162 @@ export const WORKFLOW_STAGES = [
     {
         stage: 1,
         agent: 'atlas',
-        name: 'stage1_initial_processing',
-        description: 'Atlas перефразовує та покращує запит користувача',
+        name: 'stage1_initial_process',
+        description: 'Atlas формалізує та структурує завдання',
         required: true,
-        maxRetries: 1
+        maxRetries: 1,
+        expectedStates: ['task_processed', 'needs_clarification']
     },
     {
         stage: 2,
         agent: 'tetyana',
         name: 'stage2_execution',
-        description: 'Тетяна виконує завдання',
+        description: 'Тетяна виконує формалізоване завдання',
         required: true,
-        maxRetries: 1
+        maxRetries: 1,
+        expectedStates: ['completed', 'incomplete', 'blocked']
     },
     {
         stage: 3,
         agent: 'atlas',
         name: 'stage3_clarification',
-        description: 'Atlas надає уточнення якщо Тетяна потребує',
+        description: 'Atlas надає уточнення на запит Тетяни',
         required: false,
         condition: 'tetyana_needs_clarification',
-        maxRetries: 1
+        maxRetries: 1,
+        expectedStates: ['clarified', 'not_clarified']
     },
     {
         stage: 4,
         agent: 'tetyana',
         name: 'stage4_retry',
-        description: 'Тетяна повторює з уточненнями Atlas',
+        description: 'Тетяна виконує завдання з уточненнями',
         required: false,
         condition: 'atlas_provided_clarification',
-        maxRetries: 1
+        maxRetries: 1,
+        expectedStates: ['completed', 'incomplete', 'blocked']
     },
     {
         stage: 5,
         agent: 'grisha',
-        name: 'stage5_takeover',
-        description: 'Гриша бере на себе завдання якщо Тетяна не може',
+        name: 'stage5_diagnosis',
+        description: 'Гриша аналізує причини блокування Тетяни',
         required: false,
         condition: 'tetyana_still_blocked',
-        maxRetries: 1
+        maxRetries: 1,
+        expectedStates: ['problem_identified', 'cannot_identify']
     },
     {
         stage: 6,
-        agent: 'grisha',
-        name: 'stage6_verification',
-        description: 'Гриша перевіряє результати виконання',
-        required: true,
-        maxRetries: 1
-    },
-    {
-        id: 'stage7_task_completion_final',
-        name: 'Фінальне завершення після підтвердження Гриші',
-        agent: 'system',
-        description: 'Завдання успішно завершено та підтверджено Гришею',
-        required: false,
-        condition: 'verification_passed',
-        maxRetries: 0
-    },
-    {
-        id: 'stage8_retry_cycle',
-        name: 'Новий цикл після невдалої верифікації',
         agent: 'atlas',
-        description: 'Atlas змінює концепцію і координує новий цикл після невдалої верифікації Гриші',
+        name: 'stage6_task_adjustment',
+        description: 'Atlas коригує завдання на основі діагностики Гриші',
         required: false,
-        condition: 'verification_failed',
-        maxRetries: 2
+        condition: 'grisha_provided_diagnosis',
+        maxRetries: 1,
+        expectedStates: ['adjusted_task', 'not_adjusted']
+    },
+    {
+        stage: 7,
+        agent: 'grisha',
+        name: 'stage7_verification',
+        description: 'Гриша перевіряє правильність виконання',
+        required: true,
+        maxRetries: 1,
+        expectedStates: ['verification_passed', 'verification_failed', 'verification_blocked']
+    },
+    {
+        stage: 8,
+        agent: 'system',
+        name: 'stage8_completion',
+        description: 'Системне завершення workflow',
+        required: true,
+        condition: 'should_complete_workflow',
+        maxRetries: 0,
+        expectedStates: ['success', 'failed', 'timeout_exceeded']
+    },
+    {
+        stage: 9,
+        agent: 'atlas',
+        name: 'stage9_retry_cycle',
+        description: 'Atlas ініціює новий цикл виконання',
+        required: false,
+        condition: 'should_retry_cycle',
+        maxRetries: 2,
+        expectedStates: ['new_strategy', 'retry_limit_reached', 'user_update', 'auto_fix']
     }
 ];
 
 export const WORKFLOW_CONDITIONS = {
     async tetyana_needs_clarification(response) {
-        if (!response || !response.content) return false;
-        if (response.agent !== 'tetyana') return false;
-        
-        // Повністю покладаємося на AI аналіз без фільтрів
-        const aiAnalysis = await analyzeAgentResponse('tetyana', response.content, 'clarification_needed');
+        if (!response?.content || response.agent !== 'tetyana') return false;
+        const aiAnalysis = await analyzeAgentResponse('tetyana', response.content, 'execution_state');
         return aiAnalysis.predicted_state === 'needs_clarification';
     },
 
     async atlas_provided_clarification(response) {
-        if (!response || !response.agent) return false;
-        if (response.agent !== 'atlas') return false;
-        
-        const aiAnalysis = await analyzeAgentResponse('atlas', response.content, 'clarification_provided');
+        if (!response?.content || response.agent !== 'atlas') return false;
+        const aiAnalysis = await analyzeAgentResponse('atlas', response.content, 'clarification_state');
         return aiAnalysis.predicted_state === 'clarified';
     },
 
     async tetyana_completed_task(response) {
-        if (!response || !response.content) return false;
-        if (response.agent !== 'tetyana') return false;
-        
-        // Тільки AI аналіз - ніяких ключових слів!
-        const aiAnalysis = await analyzeAgentResponse('tetyana', response.content, 'task_completion');
-        console.log(`[WORKFLOW] Tetyana completion analysis: ${aiAnalysis.predicted_state}, confidence: ${aiAnalysis.confidence}`);
+        if (!response?.content || response.agent !== 'tetyana') return false;
+        const aiAnalysis = await analyzeAgentResponse('tetyana', response.content, 'execution_state');
+        console.log(`[WORKFLOW] Tetyana execution state: ${aiAnalysis.predicted_state} (${aiAnalysis.confidence})`);
         return aiAnalysis.predicted_state === 'completed';
     },
-
 
     async tetyana_still_blocked(responses) {
         if (!Array.isArray(responses)) return false;
         const latestResponse = responses[responses.length - 1];
-        if (!latestResponse || latestResponse.agent !== 'tetyana') return false;
+        if (!latestResponse?.content || latestResponse.agent !== 'tetyana') return false;
         
-        const aiAnalysis = await analyzeAgentResponse('tetyana', latestResponse.content, 'block_detection');
+        const aiAnalysis = await analyzeAgentResponse('tetyana', latestResponse.content, 'execution_state');
         return aiAnalysis.predicted_state === 'blocked';
     },
 
-    async verification_failed(response) {
-        if (!response || !response.content) return false;
-        if (response.agent !== 'grisha' || response.stage !== 'stage6_verification') return false;
-        
-        const aiAnalysis = await analyzeAgentResponse('grisha', response.content, 'verification_check');
-        console.log(`[WORKFLOW] Grisha verification: ${aiAnalysis.predicted_state}, confidence: ${aiAnalysis.confidence}`);
-        return aiAnalysis.predicted_state === 'verification_failed';
+    async grisha_provided_diagnosis(response) {
+        if (!response?.content || response.agent !== 'grisha') return false;
+        const aiAnalysis = await analyzeAgentResponse('grisha', response.content, 'diagnosis_state');
+        return aiAnalysis.predicted_state === 'problem_identified';
     },
 
-    async verification_passed(response) {
-        if (!response || !response.content) return false;
-        if (response.agent !== 'grisha' || response.stage !== 'stage6_verification') return false;
+    async should_complete_workflow(response) {
+        // Перевіряємо умови завершення workflow
         
-        const aiAnalysis = await analyzeAgentResponse('grisha', response.content, 'verification_check');
-        console.log(`[WORKFLOW] Grisha verification: ${aiAnalysis.predicted_state}, confidence: ${aiAnalysis.confidence}`);
-        return aiAnalysis.predicted_state === 'verification_passed';
+        // 1. Перевірка на timeout
+        const hasTimedOut = Date.now() - response?.startTime >= WORKFLOW_CONFIG.timeoutPerStage * WORKFLOW_CONFIG.maxTotalStages;
+        if (hasTimedOut) {
+            response.predicted_state = 'timeout_exceeded';
+            return true;
+        }
+
+        // 2. Перевірка на успішну верифікацію
+        const verificationPassed = response?.content && response.agent === 'grisha' &&
+            (await analyzeAgentResponse('grisha', response.content, 'verification_state')).predicted_state === 'verification_passed';
+        if (verificationPassed) {
+            response.predicted_state = 'success';
+            return true;
+        }
+
+        // 3. Перевірка на ліміт спроб
+        const reachedRetryLimit = response?.retryCount >= WORKFLOW_CONFIG.maxRetryCycles;
+        if (reachedRetryLimit) {
+            response.predicted_state = 'failed';
+            return true;
+        }
+
+        return false;
+    },
+
+    async should_retry_cycle(response) {
+        if (!response?.content || response.agent !== 'grisha') return false;
+        
+        const verificationFailed = (await analyzeAgentResponse('grisha', response.content, 'verification_state')).predicted_state === 'verification_failed';
+        const hasRetries = response.retryCount < WORKFLOW_CONFIG.maxRetryCycles;
+        
+        return verificationFailed && hasRetries;
     }
 };
 
@@ -135,6 +169,34 @@ export const WORKFLOW_CONFIG = {
     maxTotalStages: 8,
     maxRetryCycles: 3, // Максимум 3 цикли повторення
     timeoutPerStage: 30000, // 30 секунд на етап
+
+    // Уніфіковані стани для аналізу відповідей агентів
+    analysisStates: {
+        execution: {
+            states: ['completed', 'incomplete', 'blocked', 'needs_clarification'],
+            confidence_threshold: 0.7
+        },
+        retry_cycle: {
+            states: ['new_strategy', 'retry_limit_reached', 'user_update', 'auto_fix'],
+            confidence_threshold: 0.8
+        },
+        clarification: {
+            states: ['clarified', 'not_clarified'],
+            confidence_threshold: 0.8
+        },
+        diagnosis: {
+            states: ['problem_identified', 'cannot_identify'],
+            confidence_threshold: 0.8
+        },
+        verification: {
+            states: ['verification_passed', 'verification_failed', 'verification_blocked'],
+            confidence_threshold: 0.9
+        },
+        task_adjustment: {
+            states: ['adjusted_task', 'not_adjusted'],
+            confidence_threshold: 0.8
+        }
+    },
     enableTTS: true,
     enableLogging: true,
     continueOnError: true,
