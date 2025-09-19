@@ -135,11 +135,16 @@ function generateShortStatus(agent, stage, action) {
     return statusMessages[agent]?.[stage] || `${agent} виконує ${stage}`;
 }
 
-// Перевірка умов workflow
-function checkWorkflowCondition(conditionName, data) {
+// Перевірка умов workflow (async)
+async function checkWorkflowCondition(conditionName, data) {
     const condition = workflowConfig.WORKFLOW_CONDITIONS[conditionName];
     if (!condition) return false;
-    return condition(data);
+    try {
+        return await condition(data);
+    } catch (error) {
+        logMessage('error', `Workflow condition error for ${conditionName}: ${error.message}`);
+        return false;
+    }
 }
 
 // Routes
@@ -248,18 +253,22 @@ async function executeStepByStepWorkflow(userMessage, session, res) {
             // Різні умови потребують різних даних
             if (stageConfig.condition === 'tetyana_needs_clarification') {
                 const lastResponse = session.history[session.history.length - 1];
-                conditionMet = checkWorkflowCondition(stageConfig.condition, lastResponse);
+                conditionMet = await checkWorkflowCondition(stageConfig.condition, lastResponse);
             } else if (stageConfig.condition === 'atlas_provided_clarification') {
                 // Перевіряємо чи Atlas щойно надав уточнення
                 const lastAtlasResponse = session.history.filter(r => r.agent === 'atlas').pop();
-                conditionMet = checkWorkflowCondition(stageConfig.condition, lastAtlasResponse);
+                conditionMet = await checkWorkflowCondition(stageConfig.condition, lastAtlasResponse);
             } else if (stageConfig.condition === 'verification_failed') {
                 const lastGrishaResponse = session.history.filter(r => r.agent === 'grisha').pop();
-                conditionMet = checkWorkflowCondition(stageConfig.condition, lastGrishaResponse);
+                conditionMet = await checkWorkflowCondition(stageConfig.condition, lastGrishaResponse);
+            } else if (stageConfig.condition === 'tetyana_completed_task') {
+                const lastTetyanaResponse = session.history.filter(r => r.agent === 'tetyana').pop();
+                conditionMet = await checkWorkflowCondition(stageConfig.condition, lastTetyanaResponse);
+                logMessage('info', `Tetyana completion check result: ${conditionMet}`);
             } else {
                 // Загальна перевірка
                 const lastResponse = session.history[session.history.length - 1];
-                conditionMet = checkWorkflowCondition(stageConfig.condition, lastResponse);
+                conditionMet = await checkWorkflowCondition(stageConfig.condition, lastResponse);
             }
             
             if (!conditionMet) {
@@ -443,8 +452,13 @@ async function executeWorkflowWithVerification(userMessage, session) {
     responses.push(tetyanaResponse1);
     session.history.push(tetyanaResponse1);
     
-    // Перевіряємо чи потребує уточнень
-    if (checkWorkflowCondition('tetyana_needs_clarification', tetyanaResponse1)) {
+    // СПОЧАТКУ перевіряємо чи виконала завдання
+    const taskCompleted = await checkWorkflowCondition('tetyana_completed_task', tetyanaResponse1);
+    logMessage('info', `Task completion check: ${taskCompleted}`);
+    
+    if (!taskCompleted) {
+        // Перевіряємо чи потребує уточнень
+        if (await checkWorkflowCondition('tetyana_needs_clarification', tetyanaResponse1)) {
         // ЕТАП 3: Atlas уточнення
         session.currentStage = 3;
         const atlasResponse2 = await executeAgentStage(
@@ -469,9 +483,18 @@ async function executeWorkflowWithVerification(userMessage, session) {
         );
         responses.push(tetyanaResponse2);
         session.history.push(tetyanaResponse2);
+        
+        // Перевіряємо чи виконала після retry
+        const retryCompleted = await checkWorkflowCondition('tetyana_completed_task', tetyanaResponse2);
+        logMessage('info', `Retry completion check: ${retryCompleted}`);
+        if (!retryCompleted) {
+            logMessage('warn', 'Task still not completed after clarification and retry');
+            return responses; // Зупиняємося якщо не виконано
+        }
+        }
     }
     
-    // ЕТАП 6: Гриша верифікація (ЗАВЖДИ)
+    // ЕТАП 6: Гриша верифікація (ТІЛЬКИ якщо завдання виконано)
     session.currentStage = 6;
     const executionResults = responses.filter(r => 
         r.agent === 'tetyana'
@@ -489,7 +512,8 @@ async function executeWorkflowWithVerification(userMessage, session) {
     session.history.push(grishaVerification);
     
     // Перевіряємо чи пройшла верифікація
-    if (!checkWorkflowCondition('verification_failed', grishaVerification)) {
+    const verificationFailed = await checkWorkflowCondition('verification_failed', grishaVerification);
+    if (!verificationFailed) {
         // Верифікація пройшла успішно!
         session.verified = true;
         logMessage('info', 'Verification PASSED - task completed successfully');
