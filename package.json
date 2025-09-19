@@ -1,0 +1,33 @@
+{
+  "name": "atlas-system",
+  "version": "4.0.0",
+  "description": "ATLAS Intelligent Multi-Agent System - Central Dependencies",
+  "type": "module",
+  "private": true,
+  "workspaces": [
+    "frontend_new/orchestrator",
+    "fallback_llm"
+  ],
+  "scripts": {
+    "install-all": "npm install && npm run install-orchestrator && npm run install-fallback",
+    "install-orchestrator": "cd frontend_new/orchestrator && npm install",
+    "install-fallback": "cd fallback_llm && npm install",
+    "start": "./restart_system.sh start",
+    "stop": "./restart_system.sh stop",
+    "restart": "./restart_system.sh restart",
+    "status": "./restart_system.sh status",
+    "logs": "./restart_system.sh logs",
+    "clean": "./restart_system.sh clean"
+  },
+  "devDependencies": {
+    "eslint": "^8.48.0",
+    "prettier": "^3.0.3"
+  },
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  },
+  "dependencies": {
+    "ws": "^8.18.3"
+  }
+}

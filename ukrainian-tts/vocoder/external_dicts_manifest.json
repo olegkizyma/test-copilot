@@ -1,0 +1,19 @@
+{
+  "sources": [
+    {
+      "type": "wiktionary_sample",
+      "file": "wiktionary_sample.json",
+      "count": 0
+    },
+    {
+      "name": "ukwiktionary_dump",
+      "entries_from_dump": 229601,
+      "added": 229601
+    },
+    {
+      "name": "ukwiktionary_dump",
+      "entries_from_dump": 229601,
+      "added": 229601
+    }
+  ]
+}

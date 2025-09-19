@@ -1,0 +1,53 @@
+# =============================================================================
+# ATLAS System - Complete Python Dependencies
+# =============================================================================
+# Централізований файл залежностей для всієї системи
+# Встановлення: pip install -r requirements-all.txt
+# =============================================================================
+
+# Core Web Framework
+Flask==2.3.3
+Flask-CORS==4.0.0
+
+# HTTP and Networking
+requests==2.31.0
+aiohttp==3.8.5
+websockets==11.0.3
+urllib3==2.0.4
+
+# Async Support
+asyncio==3.4.3
+aiofiles==23.2.1
+
+# Ukrainian TTS Dependencies (якщо використовується реальний TTS)
+# torch>=2.0.0  # Uncomment for real TTS
+# torchaudio>=2.0.0  # Uncomment for real TTS
+# espnet>=202301  # Uncomment for real TTS
+# espnet-model-zoo>=0.1.7  # Uncomment for real TTS
+
+# JSON and Data Processing
+jsonschema==4.19.0
+pyyaml==6.0.1
+
+# Logging and Monitoring
+colorama==0.4.6
+python-dotenv==1.0.0
+
+# System and Process Management
+psutil==5.9.5
+
+# Date and Time
+python-dateutil==2.8.2
+
+# Testing (optional)
+pytest==7.4.2
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+
+# Development Tools (optional)
+black==23.7.0
+flake8==6.1.0
+mypy==1.5.1
+
+# Security
+cryptography==41.0.3

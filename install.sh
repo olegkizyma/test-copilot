@@ -1,0 +1,174 @@
+#!/bin/bash
+
+# =============================================================================
+# ATLAS Quick Installation Script
+# =============================================================================
+# Швидка установка всіх залежностей системи
+# =============================================================================
+
+set -e
+
+echo "╔════════════════════════════════════════════════════════════════╗"
+echo "║               ATLAS SYSTEM INSTALLATION                        ║"
+echo "╚════════════════════════════════════════════════════════════════╝"
+echo ""
+
+# Check for required tools
+echo "🔍 Checking system requirements..."
+
+check_command() {
+    if command -v $1 >/dev/null 2>&1; then
+        echo "✅ $1 is installed"
+        return 0
+    else
+        echo "❌ $1 is not installed"
+        return 1
+    fi
+}
+
+errors=0
+check_command python3 || errors=$((errors + 1))
+check_command node || errors=$((errors + 1))
+check_command npm || errors=$((errors + 1))
+
+if [ $errors -gt 0 ]; then
+    echo ""
+    echo "❌ Missing system requirements. Please install:"
+    [ ! -x "$(command -v python3)" ] && echo "  - Python 3.9+"
+    [ ! -x "$(command -v node)" ] && echo "  - Node.js 16+"
+    [ ! -x "$(command -v npm)" ] && echo "  - npm"
+    exit 1
+fi
+
+echo ""
+echo "📦 Installing Python dependencies..."
+
+# Create virtual environment for frontend
+if [ ! -d "frontend_new/venv" ]; then
+    echo "Creating Python virtual environment..."
+    python3 -m venv frontend_new/venv
+fi
+
+# Activate and install Python packages
+source frontend_new/venv/bin/activate
+pip install -q --upgrade pip
+pip install -q -r requirements-all.txt
+echo "✅ Python dependencies installed"
+
+# Create virtual environment for TTS if needed
+if [ -d "ukrainian-tts" ]; then
+    echo "📦 Setting up Ukrainian TTS environment..."
+    if [ ! -d "ukrainian-tts/.venv" ]; then
+        python3 -m venv ukrainian-tts/.venv
+    fi
+    source ukrainian-tts/.venv/bin/activate
+    pip install -q --upgrade pip
+    
+    # Install Ukrainian TTS from GitHub
+    echo "Installing Ukrainian TTS package from GitHub..."
+    pip install -q git+https://github.com/robinhad/ukrainian-tts.git
+    
+    # Install additional dependencies if requirements file exists
+    if [ -f "ukrainian-tts/requirements.txt" ]; then
+        pip install -q -r ukrainian-tts/requirements.txt
+    fi
+    echo "✅ TTS dependencies installed"
+fi
+
+echo ""
+echo "🦆 Setting up Goose AI environment..."
+
+# Check if Goose is installed
+if command -v goose >/dev/null 2>&1; then
+    echo "✅ Goose is installed"
+    
+    # Run Goose setup script
+    if [ -f "scripts/setup_goose.sh" ]; then
+        ./scripts/setup_goose.sh
+    else
+        echo "⚠️  Goose setup script not found"
+    fi
+    
+    # Install Playwright MCP server if not exists
+    if [ ! -d "goose/mcp/playwright" ]; then
+        echo "Installing Playwright MCP server..."
+        mkdir -p goose/mcp
+        cd goose/mcp
+        git clone https://github.com/modelcontextprotocol/servers.git temp_servers
+        cp -r temp_servers/src/playwright ./
+        rm -rf temp_servers
+        cd playwright
+        npm install
+        cd ../../..
+        echo "✅ Playwright MCP server installed"
+    fi
+    
+    echo "✅ Goose environment configured"
+else
+    echo "⚠️  Goose not found. Install with: brew install block-goose-cli"
+fi
+
+echo ""
+echo "📦 Installing Node.js dependencies..."
+
+# Install orchestrator dependencies
+if [ -d "frontend_new/orchestrator" ]; then
+    echo "Installing orchestrator dependencies..."
+    cd frontend_new/orchestrator
+    npm install --silent
+    cd ../..
+    echo "✅ Orchestrator dependencies installed"
+fi
+
+# Install fallback LLM dependencies
+if [ -d "fallback_llm" ]; then
+    echo "Installing fallback LLM dependencies..."
+    cd fallback_llm
+    npm install --silent
+    cd ..
+    echo "✅ Fallback LLM dependencies installed"
+fi
+
+echo ""
+echo "🦆 Checking Goose installation..."
+
+# Check for Goose Desktop
+if [ -x "/Applications/Goose.app/Contents/MacOS/goose" ]; then
+    echo "✅ Goose Desktop is installed"
+elif [ -x "$HOME/.local/bin/goose" ]; then
+    echo "✅ Goose CLI is installed"
+elif command -v goose >/dev/null 2>&1; then
+    echo "✅ Goose is available in PATH"
+else
+    echo "⚠️  Goose not found. Please install Goose Desktop or run:"
+    echo "   curl -fsSL https://goose.build/install.sh | sh"
+fi
+
+echo ""
+echo "🔧 Setting up directories..."
+mkdir -p logs logs/archive
+mkdir -p $HOME/.local/share/goose/sessions
+echo "✅ Directories created"
+
+echo ""
+echo "📝 Configuration reminders:"
+echo ""
+echo "1. Set your GitHub Copilot token in goose/goose/config.yaml:"
+echo "   GITHUB_COPILOT_TOKEN: YOUR_TOKEN_HERE"
+echo ""
+echo "2. Configure environment variables (optional):"
+echo "   export GOOSE_DESKTOP_PATH=/Applications/Goose.app/Contents/MacOS/goose"
+echo "   export REAL_TTS_MODE=true"
+echo "   export TTS_DEVICE=mps"
+echo ""
+
+echo "╔════════════════════════════════════════════════════════════════╗"
+echo "║                  INSTALLATION COMPLETE!                        ║"
+echo "╚════════════════════════════════════════════════════════════════╝"
+echo ""
+echo "🚀 To start the system, run:"
+echo "   ./restart_system.sh start"
+echo ""
+echo "Or use Make:"
+echo "   make start"
+echo ""
