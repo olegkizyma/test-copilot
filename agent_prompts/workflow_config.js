@@ -166,38 +166,75 @@ async function callAIModel({ agent, stage, response }) {
     console.log(`AI MODEL: Аналіз агента: ${agent}, етап: ${stage}, відповідь: ${response}`);
     
     // Створюємо спеціалізовані промпти для кожного типу аналізу
+    // Функція для отримання дефолтного стану
+    function getDefaultState(stage) {
+        const defaults = {
+            'clarification_needed': 'clear_to_proceed',
+            'task_completion': 'incomplete',
+            'verification_check': 'verification_failed',
+            'block_detection': 'not_blocked',
+            'completion_confirmation': 'not_confirmed'
+        };
+        return defaults[stage] || 'needs_analysis';
+    }
+
     const systemPrompts = {
-        clarification_needed: `You are analyzing Ukrainian text from Tetyana (virtual assistant) to determine if she needs clarification.
+        clarification_needed: `You are analyzing Ukrainian text from Tetyana to determine if she needs clarification.
 
-        Return ONLY this JSON format: {"predicted_state": "needs_clarification" | "clear_to_proceed", "confidence": 0.0-1.0}
+        ANALYZE FOR:
+        1. Direct requests for clarification or help
+        2. Expressions of uncertainty or confusion
+        3. Questions about the task
+        4. Statements about missing information
 
-        NEEDS CLARIFICATION if Tetyana says:
-        - She doesn't understand something (не розумію, незрозуміло)
-        - Needs more information (потрібно більше інформації, не вистачає)  
-        - Cannot complete task due to unclear instructions (не можу виконати)
-        - Asks questions or requests clarification (уточнення, як саме?)
+        RETURN ONLY JSON:
+        {
+            "predicted_state": "needs_clarification" | "clear_to_proceed",
+            "confidence": number between 0.0-1.0
+        }
 
-        CLEAR TO PROCEED if Tetyana:
-        - Reports task completion (готово, виконано, зроблено)
-        - Lists specific steps she took
-        - Says she's ready or waiting for next task
-        - Provides concrete results`,
+        KEY INDICATORS:
+        Needs Clarification:
+        - "не розумію", "незрозуміло"
+        - "потрібно більше інформації"
+        - "не можу виконати"
+        - "як саме?", "що маєте на увазі?"
+        - "уточніть будь ласка"
+
+        Clear to Proceed:
+        - "готово", "виконано", "зроблено"
+        - Описує конкретні виконані кроки
+        - Надає результати роботи
+        - "можу продовжувати"`,
         
-        task_completion: `You are analyzing Ukrainian text from Tetyana to determine if she completed a task.
+        task_completion: `You are analyzing Ukrainian text from Tetyana to determine task completion status.
 
-        Return ONLY this JSON format: {"predicted_state": "completed" | "incomplete", "confidence": 0.0-1.0}
+        ANALYZE FOR:
+        1. Explicit completion statements
+        2. Concrete actions and results
+        3. Error reports or blockers
+        4. Task progress indicators
 
-        TASK IS COMPLETED if Tetyana:
-        - Says "Готово" and lists what she did
-        - Reports specific actions taken (відкрила, створила, записала, обчислила)
-        - Provides concrete results or outcomes  
-        - States task is done/finished (виконано, зроблено)
-        - Describes successful completion of all requested steps
+        RETURN ONLY JSON:
+        {
+            "predicted_state": "completed" | "incomplete",
+            "confidence": number between 0.0-1.0
+        }
 
-        TASK IS INCOMPLETE if Tetyana:
-        - Says she cannot do something (не можу)
-        - Reports errors or problems
-        - Asks for clarification or help
+        KEY INDICATORS:
+        Completed Task:
+        - "готово" + конкретні виконані дії
+        - Дієслова виконання: "створила", "змінила", "оновила"
+        - "завдання виконано" + опис результату
+        - Повний опис всіх виконаних кроків
+        - Надання конкретних результатів
+
+        Incomplete Task:
+        - "не можу", "виникла помилка"
+        - Запитання про уточнення
+        - Опис проблем без рішення
+        - Часткове виконання
+        - "спробую ще раз", "працюю над цим"
         - Only partially completed the request
 
         CRITICAL: If Tetyana says "Готово" and describes specific completed actions, this is ALWAYS "completed".`,
@@ -219,71 +256,135 @@ async function callAIModel({ agent, stage, response }) {
         
         verification_check: `You are analyzing Ukrainian text from Grisha's verification response.
 
-        Return ONLY this JSON format: {"predicted_state": "verification_failed" | "verification_passed", "confidence": 0.0-1.0}
+        ANALYZE FOR:
+        1. Explicit approval/rejection statements
+        2. Quality assessment comments
+        3. Required modifications
+        4. Completion status confirmation
 
-        VERIFICATION FAILED if Grisha says:
-        - Task not confirmed (не підтверджено)
-        - Found problems or issues (проблеми, помилки) 
-        - Needs rework (потрібно переробити)
-        - Task incomplete (не виконано, неповністю)
+        RETURN ONLY JSON:
+        {
+            "predicted_state": "verification_passed" | "verification_failed",
+            "confidence": number between 0.0-1.0
+        }
 
-        VERIFICATION PASSED if Grisha says:
-        - Task confirmed/approved (підтверджено)
-        - Everything correct (все правильно)
-        - Successfully completed (успішно виконано)
-        - Meets requirements (відповідає вимогам)`,
-        
-        block_detection: `You are analyzing Ukrainian text to see if Tetyana is blocked.
+        KEY INDICATORS:
+        Verification Passed:
+        - "підтверджую", "схвалено"
+        - "все правильно", "відповідає вимогам"
+        - "успішно виконано"
+        - "якість відповідає очікуванням"
+        - Конкретний опис що саме зроблено правильно
 
-        Return ONLY this JSON format: {"predicted_state": "blocked" | "not_blocked", "confidence": 0.0-1.0}
+        Verification Failed:
+        - "не підтверджую", "відхилено"
+        - "знайдено помилки", "є проблеми"
+        - "потрібно доопрацювати"
+        - "не відповідає вимогам"
+        - Конкретний опис проблем`,
 
-        BLOCKED if Tetyana says:
-        - Cannot do something (не можу зробити)
-        - It's impossible (неможливо)
-        - Doesn't know how (не знаю як)
-        - Encountered errors (помилка, збій)
+        block_detection: `You are analyzing Ukrainian text from Tetyana for blocking issues.
 
-        NOT BLOCKED if Tetyana:
-        - Reports successful completion
-        - Describes what she did
-        - Says task is ready/done`
+        ANALYZE FOR:
+        1. Direct statements of inability
+        2. Technical blockers
+        3. Knowledge gaps
+        4. Error conditions
+
+        RETURN ONLY JSON:
+        {
+            "predicted_state": "blocked" | "not_blocked",
+            "confidence": number between 0.0-1.0
+        }
+
+        KEY INDICATORS:
+        Blocked State:
+        - "не можу виконати" + конкретна причина
+        - "виникла помилка" + опис помилки
+        - "не знаю як" + конкретний аспект
+        - "технічні обмеження" + деталі
+        - "неможливо через" + пояснення
+
+        Not Blocked:
+        - "працюю над цим"
+        - "майже готово"
+        - "знайшла рішення"
+        - Опис прогресу
+        - "вже виконую"`
     };
 
-    const systemPrompt = systemPrompts[stage] || `Analyze the agent response and return JSON with predicted_state and confidence.`;
+    const systemPrompt = systemPrompts[stage] || `You are analyzing Ukrainian agent responses.
+Return ONLY a valid JSON object with these exact fields:
+{
+    "predicted_state": string,
+    "confidence": number (0.0-1.0)
+}
+DO NOT include any additional text, markdown formatting or explanation.`;
     
-    // Вибір моделі через ротацію  
-    const models = [
-        'openai/gpt-4o-mini', 'openai/gpt-4o', 'openai/gpt-4.1',
-        'meta/meta-llama-3.1-8b-instruct', 'meta/llama-3.3-70b-instruct',
-        'microsoft/phi-3.5-mini-instruct', 'mistral-ai/ministral-3b'
-    ];
+    // Використовуємо найбільш стабільну модель для аналізу
+    const MODEL = 'openai/gpt-4o';
 
-    const selectedModel = models[Math.floor(Math.random() * models.length)];
+    // Формуємо чіткий prompt для аналізу
+    const userPrompt = `
+CONTEXT:
+Agent: ${agent}
+Current Stage: ${stage}
+Response to Analyze: "${response.trim()}"
+
+TASK:
+1. Analyze the response considering:
+   - Agent's role and current workflow stage
+   - Overall meaning and intent of the message
+   - Specific phrases and context clues in Ukrainian
+   
+2. Return ONLY a valid JSON object with:
+   - predicted_state: String matching the stage requirements
+   - confidence: Number between 0.0 and 1.0
+
+RESPONSE FORMAT:
+{"predicted_state": "state_value", "confidence": 0.95}
+
+DO NOT include any explanations or additional text.`;
 
     try {
         const res = await fetch('http://localhost:4000/v1/chat/completions', {
             method: 'POST', 
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                model: selectedModel,
+                model: MODEL,
                 temperature: 0.1,
                 max_tokens: 100,
                 messages: [
-                  { role: 'system', content: systemPrompt },
-                  { role: 'user', content: `Agent: ${agent}\nStage: ${stage}\nResponse: "${response}"\n\nAnalyze and return JSON only.` }
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: userPrompt }
                 ]
             })
         });
         
         const result = await res.json();
-        const content = result.choices?.[0]?.message?.content;
+        let content = result.choices?.[0]?.message?.content;
+        
+        // Очищаємо контент від markdown та форматування
+        if (content) {
+            content = content
+                .replace(/```json\n?/g, '')  // Видаляємо ```json
+                .replace(/```\n?/g, '')      // Видаляємо ```
+                .replace(/`/g, '')           // Видаляємо окремі `
+                .replace(/^\s*\n/gm, '')     // Видаляємо порожні рядки
+                .trim();                     // Видаляємо зайві пробіли
+        }
         
         try {
-            return JSON.parse(content);
+            const parsed = JSON.parse(content);
+            console.log(`[AI Analysis] ${agent}/${stage}:`, parsed);
+            return parsed;
         } catch (e) {
-            console.warn('AI JSON Parse Error:', e, 'Content:', content);
-            // Fallback якщо JSON некоректний - робимо локальний аналіз
-            return localFallbackAnalysis(stage, response);
+            console.warn('[AI Analysis] JSON Parse Error:', e, 'Content:', content);
+            // Повертаємо безпечний fallback з низькою впевненістю
+            return {
+                predicted_state: getDefaultState(stage),
+                confidence: 0.3
+            };
         }
     } catch (error) {
         console.error('AI Model Error:', error);

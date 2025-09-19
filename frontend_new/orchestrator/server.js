@@ -724,6 +724,11 @@ async function detectGoosePort() {
 
 // Виправлений виклик Goose агента (БЕЗ fallback симуляції)
 async function callGooseAgentFixed(message, sessionId, opts = {}) {
+    // Обмежуємо довжину повідомлення до 2000 символів
+    const truncatedMessage = message.length > 2000 
+        ? message.slice(0, 1997) + "..."
+        : message;
+    
     // Автоматично виявляємо порт Goose або використовуємо змінну середовища
     let goosePort = process.env.GOOSE_PORT;
     if (!goosePort) {
@@ -731,7 +736,7 @@ async function callGooseAgentFixed(message, sessionId, opts = {}) {
     }
     const gooseBaseUrl = process.env.GOOSE_BASE_URL || `http://localhost:${goosePort}`;
     
-    logMessage('info', `Calling Goose for session ${sessionId} - NO SIMULATION FALLBACK`);
+    logMessage('info', `Calling Goose for session ${sessionId} - NO SIMULATION FALLBACK [Message length: ${truncatedMessage.length}]`);
     
     try {
         // Спробуємо HTTP API спочатку, потім WebSocket
@@ -786,8 +791,13 @@ async function callGooseHTTP(baseUrl, message, sessionId) {
             logMessage('info', 'Using GitHub token for HTTP authentication');
         }
         
+        // Обмежуємо довжину повідомлення до 2000 символів
+        const truncatedMessage = message.length > 2000 
+            ? message.slice(0, 1997) + "..."
+            : message;
+
         const payload = {
-            message: message,
+            message: truncatedMessage,
             session_id: sessionId,
             timestamp: Date.now()
         };
@@ -850,9 +860,14 @@ async function callGooseWebSocket(baseUrl, message, sessionId) {
             
             ws.on('open', () => {
                 logMessage('info', `WebSocket connected to Goose for session: ${sessionId}`);
+                // Обмежуємо довжину повідомлення до 2000 символів
+                const truncatedMessage = message.length > 2000 
+                    ? message.slice(0, 1997) + "..."
+                    : message;
+
                 const payload = {
                     type: 'message',
-                    content: message,
+                    content: truncatedMessage,
                     session_id: sessionId,
                     timestamp: Date.now()
                 };
