@@ -176,6 +176,22 @@ app.post('/chat/confirm', async (req, res) => {
     res.json({ success: true, confirmed: messageId });
 });
 
+// Endpoint для отримання події завершення TTS від фронтенду
+app.post('/tts/completed', async (req, res) => {
+    const { voice } = req.body;
+    
+    if (!voice) {
+        return res.status(400).json({ error: 'Voice parameter required' });
+    }
+    
+    // Імпортуємо функцію для сповіщення про завершення TTS
+    const { notifyTTSCompleted } = await import('./utils/helpers.js');
+    notifyTTSCompleted(voice);
+    
+    logMessage('info', `[TTS] Received completion event for voice: ${voice}`);
+    res.json({ success: true, voice: voice });
+});
+
 // Start server
 app.listen(PORT, () => {
     logMessage('info', `ATLAS ORCHESTRATOR running on port ${PORT}`);

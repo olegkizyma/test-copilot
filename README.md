@@ -1,4 +1,5 @@
 # ATLAS - Adaptive Task and Learning Assistant System v4.0
+## Modular Architecture Edition
 
 ## Швидкий старт
 
@@ -12,6 +13,14 @@ make start
 # або використовувати єдиний скрипт управління:
 ./restart_system.sh start
 ```
+
+## 🎉 Нові можливості v4.0
+
+- **🏗️ Модульна архітектура** - повністю рефакторений фронтенд та orchestrator
+- **🔄 Єдина конфігурація** - `shared-config.js` для всієї системи
+- **📦 ES6 модулі** - сучасна JavaScript архітектура
+- **🎯 Event-based TTS** - синхронізація через реальні події, не таймери
+- **🧹 Очищена структура** - видалено дублювання та застарілі файли
 
 ## Системні вимоги
 
@@ -152,7 +161,7 @@ FORCE_FREE_PORTS=true       # Автоматично звільняти порт
 ```
 
 ### Доступ до системи
-- **Веб-інтерфейс**: http://localhost:5001
+- **Веб-інтерфейс**: http://localhost:5002 (оновлений порт)
 - **Goose Server**: http://localhost:3000  
 - **Orchestrator API**: http://localhost:5101
 - **Recovery Bridge**: ws://localhost:5102
@@ -171,10 +180,21 @@ FORCE_FREE_PORTS=true       # Автоматично звільняти порт
 ```
 atlas4/
 ├── restart_system.sh          # 🎛️ Головний скрипт управління
-├── config.yaml                # ⚙️ Конфігурація системи
+├── shared-config.js            # 🔄 Єдина конфігурація для всієї системи
+├── config.yaml                # ⚙️ Системна конфігурація
 ├── install.sh                 # 📦 Скрипт установки
 ├── web/                       # 🌐 Flask веб-інтерфейс
+│   └── static/js/             # 📦 Модульний JavaScript
+│       ├── core/              # 🔧 Основні модулі (logger, config, api-client)
+│       ├── modules/           # 📱 Функціональні модулі (chat, tts)
+│       ├── app-refactored.js  # 🚀 Головний додаток
+│       └── _unused/           # 🗃️ Застарілі файли
 ├── orchestrator/              # 🎭 Node.js управління агентами (модульна архітектура)
+│   ├── agents/                # 🤖 Клієнти агентів
+│   ├── ai/                    # 🧠 AI модулі
+│   ├── config/                # ⚙️ Конфігурації (імпорт з shared-config.js)
+│   ├── utils/                 # 🛠️ Утиліти
+│   └── workflow/              # 🔄 Workflow логіка
 ├── config/                    # ⚙️ Конфігураційні модулі
 ├── prompts/                   # 🧠 Промпти агентів
 ├── ukrainian-tts/             # 🔊 TTS система
@@ -187,10 +207,12 @@ atlas4/
 ### Ключові файли
 
 - `restart_system.sh` - Управління всією системою
-- `config.yaml` - Головна конфігурація
+- `shared-config.js` - Єдина конфігурація для всіх компонентів
+- `config.yaml` - Системна конфігурація
 - `requirements.txt` - Python залежності
-- `orchestrator/server.js` - Координація агентів
+- `orchestrator/server.js` - Координація агентів (модульна архітектура)
 - `web/atlas_server.py` - Веб-інтерфейс
+- `web/static/js/app-refactored.js` - Модульний фронтенд
 - `ukrainian-tts/tts_server.py` - TTS сервер
 
 ### Документація

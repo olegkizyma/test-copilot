@@ -1,5 +1,5 @@
 # ATLAS - Архітектура Системи v4.0
-## Adaptive Task and Learning Assistant System
+## Adaptive Task and Learning Assistant System - Modular Architecture Edition
 
 ---
 
@@ -8,6 +8,10 @@
 **ATLAS** - це інтелектуальна система з трьома AI-агентами, що працюють разом для автономного виконання завдань через природний діалог та верифікацію результатів.
 
 ### Основні принципи:
+- **Modular Architecture** - повністю рефакторена модульна структура
+- **Unified Configuration** - єдина конфігурація для всіх компонентів
+- **Event-Driven TTS** - синхронізація через реальні події
+- **ES6 Modules** - сучасна JavaScript архітектура
 - **Prompt-Driven Logic** - вся логіка базується на ролях агентів
 - **Безкомпромісне виконання** - система знаходить рішення будь-яким шляхом
 - **Живі агенти** - імітація природної людської комунікації
@@ -59,19 +63,16 @@
 ```
 atlas4/
 ├── restart_system.sh          # 🎛️ Головний скрипт управління системою
+├── shared-config.js            # 🔄 Єдина конфігурація для всієї системи
 ├── README.md                  # 📖 Основна документація
 ├── ATLAS_SYSTEM_ARCHITECTURE.md # 🏗️ Повна архітектура системи
-├── TECHNICAL_SPECIFICATION.md # 📋 Технічні вимоги
 ├── Makefile                   # 🔧 Команди збірки та запуску
-├── config.yaml                # ⚙️ Головна конфігурація системи
+├── config.yaml                # ⚙️ Системна конфігурація
 ├── install.sh                 # 📦 Скрипт установки
 ├── check_goose_config.sh      # 🔍 Перевірка конфігурації Goose
-├── start_goose_web.sh         # 🚀 Запуск Goose веб-сервера
 ├── package.json               # 📦 Node.js залежності  
 ├── requirements.txt           # 🐍 Python залежності основні
-├── requirements-all.txt       # 🐍 Python залежності повні
 ├── scripts/                   # 🛠️ Допоміжні скрипти
-├── fallback_llm/              # 🤖 Резервний LLM сервер
 ├── logs/                      # 📝 Логування системи
 └── unused_files/              # 🗃️ Архів невикористаних файлів
 ```
@@ -103,57 +104,67 @@ prompts/
 
 ---
 
-### `/web/` - Веб-інтерфейс
+### `/web/` - Веб-інтерфейс (Модульна архітектура)
 ```
 web/
-├── atlas_server.py            # 🖥️ Головний Flask сервер (порт 5001)
+├── atlas_server.py            # 🖥️ Головний Flask сервер (порт 5002)
 ├── goose_client.py            # 🔌 Клієнт для Goose API
-├── simple_server.py           # 🔧 Спрощений сервер для тестування
 ├── requirements.txt           # 🐍 Python залежності для веб-інтерфейсу
 ├── venv/                      # 🐍 Python віртуальне середовище
 ├── static/                    # 📁 Статичні ресурси
 │   ├── css/main.css           # 🎨 Стилі інтерфейсу
-│   ├── js/
-│   │   ├── app.js             # 📱 Основна логіка додатку
-│   │   ├── intelligent-chat-manager.js  # 💬 Менеджер чату з агентами
-│   │   ├── status-manager.js  # 📊 Управління статусами
-│   │   └── logger-manager.js  # 📋 Система логування
+│   ├── js/                    # 📦 Модульний JavaScript
+│   │   ├── core/              # 🔧 Основні модулі
+│   │   │   ├── logger.js      # 📋 Єдина система логування
+│   │   │   ├── config.js      # ⚙️ Імпорт з shared-config.js
+│   │   │   └── api-client.js  # 🌐 Уніфікований API клієнт
+│   │   ├── modules/           # 📱 Функціональні модулі
+│   │   │   ├── chat-manager.js # 💬 Управління чатом (~50KB)
+│   │   │   └── tts-manager.js  # 🔊 TTS система (~30KB)
+│   │   ├── app-refactored.js  # 🚀 Головний додаток
+│   │   ├── index.js           # 📍 Точка входу
+│   │   ├── service-worker.js  # 🔄 Service Worker (оновлений)
+│   │   └── _unused/           # 🗃️ Застарілі файли (104KB intelligent-chat-manager.js)
 │   └── assets/                # 🖼️ Зображення, іконки, 3D моделі
-└── templates/index.html       # 📄 Головна сторінка
+└── templates/index.html       # 📄 Головна сторінка (оновлена для ES6 модулів)
 ```
 
-**Призначення**: Веб-інтерфейс для взаємодії з користувачем та відображення роботи агентів.
+**Призначення**: Модульний веб-інтерфейс з чистою архітектурою для взаємодії з користувачем.
 
 ---
 
-### `/orchestrator/` - Управління агентами
+### `/orchestrator/` - Управління агентами (Модульна архітектура)
 ```
 orchestrator/
 ├── server.js                  # 🎯 Головний оркестратор (порт 5101)
-├── server_no_verification.js  # 🎯 Спрощена версія без верифікації
 ├── package.json               # 📦 Node.js залежності
 ├── package-lock.json          # 🔒 Зафіксовані версії залежностей
+├── agents/                    # 🤖 Клієнти агентів
+│   └── goose-client.js        # 🦆 WebSocket клієнт для Goose
+├── ai/                        # 🧠 AI модулі
+│   ├── fallback-llm.js        # 🤖 Резервний LLM
+│   └── state-analyzer.js      # 📊 Аналіз станів агентів
+├── config/                    # ⚙️ Конфігурації
+│   └── agents.js              # 👥 Імпорт з shared-config.js
+├── utils/                     # 🛠️ Утиліти
+│   └── helpers.js             # 🔧 Event-based TTS, логування
+├── workflow/                  # 🔄 Workflow логіка
+│   ├── stages.js              # 📋 Етапи workflow (імпорт з shared-config.js)
+│   ├── conditions.js          # ❓ Умови переходів
+│   └── executor.js            # ⚡ Виконання workflow
 └── node_modules/              # 📦 Встановлені Node.js модулі
 ```
 
-**Призначення**: Node.js оркестратор для управління workflow агентів та координації їх роботи.
+**Призначення**: Модульний Node.js оркестратор з чистою архітектурою для управління workflow агентів.
 
 ---
 
-### `/config/` - Конфігураційні модулі
-```
-config/
-├── configuration_migrator.py  # 🔄 Міграція конфігурацій
-├── intelligent_config.py      # 🧠 Розумна конфігурація системи
-├── intelligent_orchestrator.py # 🎭 Розумний оркестратор
-├── intelligent_recovery.py    # 🔄 Система відновлення
-├── intelligent_startup.py     # 🚀 Розумний запуск системи
-├── orchestrator_integration.py # 🔗 Інтеграція з оркестратором
-├── recovery_bridge.py         # 🌉 Мостовий сервіс відновлення
-└── recovery_bridge_integration.js # 🌉 JS інтеграція мостового сервісу
-```
+### **ПРИМІТКА**: Застарілі модулі перенесено в архів
 
-**Призначення**: Модулі конфігурації та інтеграції різних компонентів системи.
+Папка `/config/` з Python модулями "розумної" конфігурації перенесена в `unused_files/config/` оскільки:
+- ✅ **Замінено на `shared-config.js`** - єдина конфігурація для всіх компонентів
+- ✅ **Спрощено архітектуру** - статичні конфігурації замість адаптивних
+- ✅ **Покращено підтримку** - зрозуміла та надійна система
 
 ---
 

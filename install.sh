@@ -9,7 +9,7 @@
 set -e
 
 echo "╔════════════════════════════════════════════════════════════════╗"
-echo "║               ATLAS SYSTEM INSTALLATION                        ║"
+echo "║          ATLAS SYSTEM INSTALLATION v4.0 - MODULAR            ║"
 echo "╚════════════════════════════════════════════════════════════════╝"
 echo ""
 
@@ -161,6 +161,14 @@ if [ -f "config.yaml" ]; then
     echo "✅ System config.yaml found"
 else
     echo "⚠️  System config.yaml not found - using defaults"
+fi
+
+# Check shared configuration
+if [ -f "shared-config.js" ]; then
+    echo "✅ Shared configuration (shared-config.js) found"
+    echo "   This file provides unified config for all components"
+else
+    echo "⚠️  shared-config.js not found - modular architecture may not work properly"
 fi
 
 # Run configuration check

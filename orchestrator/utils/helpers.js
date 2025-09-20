@@ -12,41 +12,65 @@ export const logMessage = (level, message) => {
     console.log(`[${new Date().toISOString()}] [${level.toUpperCase()}] ${message}`);
 };
 
-// TTS синхронізація
+// TTS синхронізація через РЕАЛЬНІ ПОДІЇ (не таймери)
+const ttsCompletionEvents = new Map(); // Зберігаємо Promise для кожного voice
+
 export async function sendToTTSAndWait(text, voice = 'dmytro') {
     const ttsUrl = process.env.TTS_URL || 'http://localhost:3001';
     
     try {
         logMessage('info', `Sending to TTS (${voice}): ${text.substring(0, 50)}...`);
         
-        const response = await axios.post(`${ttsUrl}/synthesize`, {
-            text: text,
-            voice: voice,
-            wait: true // Чекаємо завершення озвучення
-        }, {
-            timeout: 30000 // 30 секунд максимум
+        // 1. Створюємо Promise для очікування події завершення
+        const completionPromise = new Promise((resolve) => {
+            ttsCompletionEvents.set(voice, resolve);
         });
         
-        if (response.data.success) {
-            // Додаткова пауза після озвучення для природності
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            logMessage('info', `TTS completed for voice: ${voice}`);
+        // 2. Відправляємо на TTS генерацію
+        const response = await axios.post(`${ttsUrl}/tts`, {
+            text: text,
+            voice: voice,
+            return_audio: false
+        }, {
+            timeout: 30000
+        });
+        
+        if (response.data.status === 'success') {
+            logMessage('info', `TTS generated for ${voice}, waiting for playback completion event...`);
+            
+            // 3. Чекаємо РЕАЛЬНУ подію завершення озвучення
+            await completionPromise;
+            
+            logMessage('info', `TTS playback completed for ${voice} (received completion event)`);
             return true;
         }
     } catch (error) {
         logMessage('warn', `TTS failed: ${error.message}`);
-        // Fallback - пауза без TTS
-        const estimatedDuration = Math.min(text.length * 50, 5000); // ~50ms на символ, макс 5 сек
-        await new Promise(resolve => setTimeout(resolve, estimatedDuration));
+        // Очищаємо Promise при помилці
+        ttsCompletionEvents.delete(voice);
+        
+        // Fallback - мінімальна пауза
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        logMessage('info', `TTS fallback completed for ${voice}`);
     }
     
     return false;
 }
 
+// Функція для отримання події завершення TTS (викликається фронтендом)
+export function notifyTTSCompleted(voice) {
+    const resolver = ttsCompletionEvents.get(voice);
+    if (resolver) {
+        resolver();
+        ttsCompletionEvents.delete(voice);
+        logMessage('info', `[TTS] Audio playback completed for ${voice}`);
+    }
+}
+
 // Функція очікування завершення TTS
 export async function waitForTTSCompletion(text, voice) {
     try {
-        const ttsResponse = await axios.post('http://localhost:3001/synthesize', {
+        const ttsResponse = await axios.post('http://localhost:3001/tts', {
             text: text,
             voice: voice || 'dmytro',
             wait_for_completion: true

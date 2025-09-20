@@ -47,8 +47,24 @@ export async function callGooseAgent(prompt, baseSessionId, options = {}) {
         enhancedPrompt = `ВАЖЛИВО: Відповідай ТІЛЬКИ текстом. НЕ використовуй жодних інструментів або tools. Дай повну текстову відповідь для координації.
 
 ${prompt}`;
+    } else if (options.agent === 'tetyana') {
+        // Тетяна - виконавець, НЕ використовує vision для перевірки
+        enhancedPrompt = `ВАЖЛИВО: Ти ВИКОНАВЕЦЬ завдань. НЕ використовуй screen_capture, screenshot або vision tools - це робота для Гріші (верифікатора). Твоя задача: виконати завдання використовуючи computercontroller, developer (команди, файли), playwright.
+
+${prompt}`;
+    } else if (options.agent === 'grisha') {
+        // Гриша - верифікатор, може використовувати vision через Playwright
+        enhancedPrompt = `ВАЖЛИВО: Ти ВЕРИФІКАТОР результатів. Для скріншотів використовуй PLAYWRIGHT замість developer__screen_capture:
+        
+ДОСТУПНІ TOOLS:
+• browser_take_screenshot - скріншот веб-сторінок через Playwright
+• computercontroller - перевірка файлів, процесів
+• developer - команди терміналу (БЕЗ screen_capture)
+• playwright - повна браузерна автоматизація
+
+${prompt}`;
     }
-    // Для Тетяни і Гріші - БЕЗ обмежень, повний доступ до tools!
+    // Для Тетяни і Гріші - доступ до tools БЕЗ vision функцій
     
     // Обмежуємо довжину повідомлення до 4000 символів для кращої роботи з tools
     const truncatedMessage = enhancedPrompt.length > 4000 

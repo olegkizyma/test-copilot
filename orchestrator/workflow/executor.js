@@ -5,9 +5,12 @@
 
 import { WORKFLOW_STAGES, WORKFLOW_CONFIG } from './stages.js';
 import { WORKFLOW_CONDITIONS } from './conditions.js';
-import { AGENTS, generateShortStatus } from '../config/agents.js';
+import { AGENTS } from '../config/agents.js';
 import { callGooseAgent } from '../agents/goose-client.js';
-import { generateMessageId, logMessage, waitForTTSCompletion } from '../utils/helpers.js';
+import { logMessage, sendToTTSAndWait, generateMessageId } from '../utils/helpers.js';
+
+// Семафор для запобігання одночасному запуску агентів
+const activeAgentSessions = new Set();
 
 // Перевірка умов workflow (async)
 export async function checkWorkflowCondition(conditionName, data) {
@@ -187,7 +190,7 @@ export async function executeStageByConfig(stageConfig, userMessage, session, re
     const { stage, agent, name } = stageConfig;
     
     // Імпортуємо промпти динамічно
-    const prompts = await loadStagePrompts(stage, agent, name);
+    const prompts = await loadStagePrompts(stage, agent, name, userMessage, session);
     if (!prompts) {
         throw new Error(`Could not load prompts for stage ${stage}`);
     }
@@ -207,7 +210,7 @@ export async function executeStageByConfig(stageConfig, userMessage, session, re
 }
 
 // Динамічне завантаження промптів для етапу
-async function loadStagePrompts(stage, agent, name) {
+async function loadStagePrompts(stage, agent, name, userMessage, session) {
     try {
         let systemPrompt, userPrompt;
         
@@ -215,43 +218,63 @@ async function loadStagePrompts(stage, agent, name) {
             case 1: // Atlas initial_processing
                 const atlasStage1 = await import('../../prompts/atlas/stage1_initial_processing.js');
                 systemPrompt = atlasStage1.ATLAS_STAGE1_SYSTEM_PROMPT;
-                userPrompt = atlasStage1.ATLAS_STAGE1_USER_PROMPT;
+                userPrompt = atlasStage1.ATLAS_STAGE1_USER_PROMPT(userMessage, '');
                 break;
                 
             case 2: // Tetyana execution
                 const tetyanaStage2 = await import('../../prompts/tetyana/stage2_execution.js');
                 systemPrompt = tetyanaStage2.TETYANA_STAGE2_SYSTEM_PROMPT;
-                userPrompt = tetyanaStage2.TETYANA_STAGE2_USER_PROMPT;
+                // Отримуємо останню відповідь Atlas як завдання
+                const lastAtlasResponse = session.history.filter(r => r.agent === 'atlas').pop();
+                const atlasTask = lastAtlasResponse ? lastAtlasResponse.content : userMessage;
+                userPrompt = tetyanaStage2.TETYANA_STAGE2_USER_PROMPT(atlasTask, userMessage);
                 break;
                 
             case 3: // Atlas clarification
                 const atlasStage3 = await import('../../prompts/atlas/stage3_clarification.js');
                 systemPrompt = atlasStage3.ATLAS_STAGE3_SYSTEM_PROMPT;
-                userPrompt = atlasStage3.ATLAS_STAGE3_USER_PROMPT;
+                // Отримуємо останню відповідь Тетяни та оригінальне завдання
+                const lastTetyanaResponse = session.history.filter(r => r.agent === 'tetyana').pop();
+                const tetyanaResponse = lastTetyanaResponse ? lastTetyanaResponse.content : '';
+                const originalTaskStage3 = session.history.filter(r => r.agent === 'atlas')[0]?.content || '';
+                userPrompt = atlasStage3.ATLAS_STAGE3_USER_PROMPT(tetyanaResponse, originalTaskStage3, userMessage);
                 break;
                 
             case 4: // Tetyana retry_execution
                 const tetyanaStage4 = await import('../../prompts/tetyana/stage4_retry.js');
                 systemPrompt = tetyanaStage4.TETYANA_STAGE4_SYSTEM_PROMPT;
-                userPrompt = tetyanaStage4.TETYANA_STAGE4_USER_PROMPT;
+                // Отримуємо останнє уточнення Atlas та попередню спробу
+                const lastAtlasGuidance = session.history.filter(r => r.agent === 'atlas').pop()?.content || '';
+                const originalTaskStage4 = session.history.filter(r => r.agent === 'atlas')[0]?.content || userMessage;
+                const previousAttempt = session.history.filter(r => r.agent === 'tetyana').pop()?.content || '';
+                userPrompt = tetyanaStage4.TETYANA_STAGE4_USER_PROMPT(lastAtlasGuidance, originalTaskStage4, previousAttempt);
                 break;
                 
             case 5: // Grisha diagnosis
                 const grishaStage5 = await import('../../prompts/grisha/stage5_diagnosis.js');
                 systemPrompt = grishaStage5.GRISHA_STAGE5_SYSTEM_PROMPT;
-                userPrompt = grishaStage5.GRISHA_STAGE5_USER_PROMPT;
+                // Збираємо всі спроби Atlas та Тетяни
+                const atlasAttempts = session.history.filter(r => r.agent === 'atlas').map(r => r.content).join('\n\n');
+                const tetyanaAttempts = session.history.filter(r => r.agent === 'tetyana').map(r => r.content).join('\n\n');
+                userPrompt = grishaStage5.GRISHA_STAGE5_USER_PROMPT(userMessage, atlasAttempts, tetyanaAttempts);
                 break;
                 
             case 6: // Atlas task_adjustment
                 const atlasStage6 = await import('../../prompts/atlas/stage6_task_adjustment.js');
                 systemPrompt = atlasStage6.ATLAS_STAGE6_SYSTEM_PROMPT;
-                userPrompt = atlasStage6.ATLAS_STAGE6_USER_PROMPT;
+                // Отримуємо діагноз Гріші та всі попередні спроби
+                const grishaDiagnosis = session.history.filter(r => r.agent === 'grisha').pop()?.content || '';
+                const allPreviousAttemptsStage6 = session.history.filter(r => r.agent === 'tetyana').map(r => r.content).join('\n\n');
+                userPrompt = atlasStage6.ATLAS_STAGE6_USER_PROMPT(userMessage, grishaDiagnosis, allPreviousAttemptsStage6);
                 break;
                 
             case 7: // Grisha verification
                 const grishaStage7 = await import('../../prompts/grisha/stage7_verification.js');
                 systemPrompt = grishaStage7.GRISHA_STAGE7_SYSTEM_PROMPT;
-                userPrompt = grishaStage7.GRISHA_STAGE7_USER_PROMPT;
+                // Отримуємо результати виконання та очікуваний результат
+                const executionResults = session.history.filter(r => r.agent === 'tetyana').pop()?.content || '';
+                const expectedOutcome = session.history.filter(r => r.agent === 'atlas')[0]?.content || userMessage;
+                userPrompt = grishaStage7.GRISHA_STAGE7_USER_PROMPT(userMessage, executionResults, expectedOutcome);
                 break;
                 
             case 8: // System completion
@@ -263,7 +286,10 @@ async function loadStagePrompts(stage, agent, name) {
             case 9: // Atlas retry_cycle
                 const atlasStage9 = await import('../../prompts/atlas/stage7_retry_cycle.js');
                 systemPrompt = atlasStage9.ATLAS_STAGE7_SYSTEM_PROMPT;
-                userPrompt = atlasStage9.ATLAS_STAGE7_USER_PROMPT;
+                // Отримуємо звіт верифікації Гріші та всі попередні спроби
+                const grishaVerificationReport = session.history.filter(r => r.agent === 'grisha').pop()?.content || '';
+                const allPreviousAttemptsStage9 = session.history.filter(r => r.agent === 'tetyana').map(r => r.content).join('\n\n');
+                userPrompt = atlasStage9.ATLAS_STAGE9_USER_PROMPT(userMessage, grishaVerificationReport, allPreviousAttemptsStage9);
                 break;
                 
             default:
@@ -281,7 +307,16 @@ async function loadStagePrompts(stage, agent, name) {
 export async function executeAgentStageStepByStep(agentName, stageName, systemPrompt, userPrompt, session, res, options = {}) {
     const agent = AGENTS[agentName];
     const messageId = generateMessageId();
+    const sessionKey = `${session.id}_${agentName}_${stageName}`;
     
+    // Перевіряємо чи не запущений вже цей агент для цієї сесії
+    if (activeAgentSessions.has(sessionKey)) {
+        logMessage('warn', `Step-by-step: ${agentName} already running for ${stageName}, skipping duplicate`);
+        return null;
+    }
+    
+    // Додаємо в активні сесії
+    activeAgentSessions.add(sessionKey);
     logMessage('info', `Step-by-step: ${agentName} starting ${stageName}`);
     
     let content;
@@ -305,11 +340,13 @@ export async function executeAgentStageStepByStep(agentName, stageName, systemPr
         }
     } catch (error) {
         logMessage('error', `Step-by-step: Agent ${agentName} FAILED - no simulation: ${error.message}`);
+        // Очищаємо семафор при помилці
+        activeAgentSessions.delete(sessionKey);
         throw error;
     }
     
-    // Додаємо підпис агента
-    if (!content.includes(agent.signature)) {
+    // Додаємо підпис агента (якщо агент існує і має підпис)
+    if (agent && agent.signature && !content.includes(agent.signature)) {
         content = `${agent.signature} ${content}`;
     }
     
@@ -339,11 +376,23 @@ export async function executeAgentStageStepByStep(agentName, stageName, systemPr
         return response;
     }
     
-    // АВТОМАТИЧНЕ ПРОДОВЖЕННЯ З ПАУЗОЮ
-    // Для Гріші - довша пауза, щоб користувач встиг прочитати верифікацію
-    const displayPause = agentName === 'grisha' ? 3000 : 1500; // 3 сек для Гріші, 1.5 для інших
-    await new Promise(resolve => setTimeout(resolve, displayPause));
+    // ОЧІКУВАННЯ ЗАВЕРШЕННЯ TTS ПЕРЕД ПРОДОВЖЕННЯМ
+    // Відправляємо текст на озвучення і чекаємо завершення
+    if (agent && agent.voice && content) {
+        logMessage('info', `Step-by-step: Waiting for TTS completion: ${agentName} (${agent.voice})`);
+        await sendToTTSAndWait(content, agent.voice);
+        logMessage('info', `Step-by-step: TTS completed for ${agentName}, continuing workflow`);
+    } else {
+        // Fallback - звичайна пауза якщо немає TTS
+        const displayPause = agentName === 'grisha' ? 3000 : 1500;
+        await new Promise(resolve => setTimeout(resolve, displayPause));
+        logMessage('info', `Step-by-step: Pause completed for ${agentName}, continuing workflow`);
+    }
     
     logMessage('info', `Step-by-step: Auto-continuing: ${agentName} - ${stageName}`);
+    
+    // Очищаємо семафор після завершення
+    activeAgentSessions.delete(sessionKey);
+    
     return response;
 }

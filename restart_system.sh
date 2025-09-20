@@ -444,7 +444,7 @@ start_frontend() {
             log_info "Creating Python virtual environment..."
             python3 -m venv venv
             source venv/bin/activate
-            pip install -r requirements.txt
+            pip install -r ../requirements.txt
         fi
         
         export ATLAS_TTS_URL="${ATLAS_TTS_URL:-http://127.0.0.1:$TTS_PORT/tts}"
@@ -463,9 +463,9 @@ start_recovery_bridge() {
     fi
     
     (
-        cd "$REPO_ROOT/config"
-        if [ -f "../web/venv/bin/activate" ]; then
-            source ../web/venv/bin/activate
+        cd "$REPO_ROOT/unused_files/config"
+        if [ -f "../../web/venv/bin/activate" ]; then
+            source ../../web/venv/bin/activate
         fi
         python3 recovery_bridge.py > "$LOGS_DIR/recovery.log" 2>&1 &
         echo $! > "$LOGS_DIR/recovery.pid"

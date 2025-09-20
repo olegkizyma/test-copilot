@@ -3,14 +3,17 @@
  * Кешування для швидшої роботи
  */
 
-const CACHE_NAME = 'atlas-v2.0';
+const CACHE_NAME = 'atlas-v3.0-modular';
 const CACHE_URLS = [
     '/',
     '/static/css/main.css',
-    '/static/js/app.js',
-    '/static/js/chat-manager.js',
-    '/static/js/logger-manager.js',
-    '/static/js/status-manager.js',
+    '/static/js/app-refactored.js',
+    '/static/js/core/logger.js',
+    '/static/js/core/config.js',
+    '/static/js/core/api-client.js',
+    '/static/js/modules/chat-manager.js',
+    '/static/js/modules/tts-manager.js',
+    '/static/js/index.js',
     '/static/assets/atlas-icon.svg',
     '/static/assets/favicon.ico'
 ];

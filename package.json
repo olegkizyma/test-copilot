@@ -1,0 +1,7 @@
+{
+  "name": "atlas4",
+  "private": true,
+  "type": "module",
+  "description": "Root package for ATLAS project to declare ESM module type",
+  "license": "UNLICENSED"
+}

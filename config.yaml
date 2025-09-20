@@ -1,7 +1,10 @@
 # =============================================================================
-# ATLAS System Configuration v4.0
+# ATLAS System Configuration v4.0 - Modular Architecture Edition
 # =============================================================================
-# Головний конфігураційний файл для системи ATLAS
+# Системний конфігураційний файл для ATLAS
+# 
+# ВАЖЛИВО: Конфігурації агентів, TTS, workflow та API endpoints
+# перенесено в shared-config.js для уніфікації всіх компонентів
 # =============================================================================
 
 # Загальні налаштування системи
@@ -14,7 +17,7 @@ atlas:
 # Порти сервісів
 ports:
   goose_server: 3000        # Goose Web Server (AI Engine)
-  frontend: 5001            # Python Frontend (Web Interface)  
+  frontend: 5002            # Python Frontend (Web Interface) - оновлений порт  
   orchestrator: 5101        # Node.js Orchestrator (Agent Management)
   recovery_bridge: 5102     # Recovery Bridge (System Recovery)
   tts_service: 3001         # Ukrainian TTS Service
@@ -30,54 +33,19 @@ goose:
   retry_delay: 1000         # мілісекунди
   token_limit: 2000         # символів для текстів в промптах
 
-# Агенти системи
-agents:
-  atlas:
-    name: "ATLAS"
-    role: "coordinator"
-    color: "#00ff00"
-    signature: "[ATLAS]"
-    voice: "oleksa"
-    priority: 1
-    description: "Координатор, стратег, куратор завдань"
-  
-  tetyana:
-    name: "ТЕТЯНА"
-    role: "executor"
-    color: "#00ffff"
-    signature: "[ТЕТЯНА]"
-    voice: "tetiana"
-    priority: 2
-    description: "Основний виконавець завдань"
-  
-  grisha:
-    name: "ГРИША"
-    role: "verificator"
-    color: "#ffff00"
-    signature: "[ГРИША]"
-    voice: "mykyta"
-    priority: 3
-    description: "Верифікатор, контроль якості"
+# ПРИМІТКА: Конфігурації агентів, TTS та workflow перенесено в shared-config.js
+# Це забезпечує єдину конфігурацію для всіх компонентів системи
+# Детальні налаштування дивіться в файлі shared-config.js
 
-# TTS (Text-to-Speech) налаштування
+# Системні налаштування TTS (тільки технічні параметри)
 tts:
-  enabled: true
-  server_url: "http://127.0.0.1:3001"
   device: "mps"             # mps для Apple Silicon, cpu для Intel
   real_mode: true           # true для реального TTS, false для mock
-  default_voice: "dmytro"
-  supported_voices:
-    - "dmytro"
-    - "tetiana"
-    - "mykyta"
-    - "oleksa"
+  server_url: "http://127.0.0.1:3001"
 
-# Workflow конфігурація
+# Системні налаштування workflow (тільки технічні параметри)
 workflow:
-  max_stages: 9
-  max_retries: 3
-  timeout_per_stage: 300
-  enable_verification: true
+  timeout_per_stage: 300    # секунд
   auto_recovery: true
 
 # Логування

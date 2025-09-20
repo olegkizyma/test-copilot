@@ -825,6 +825,10 @@ class AtlasIntelligentChatManager {
                             audio.onended = () => {
                                 URL.revokeObjectURL(audioUrl);
                                 this.log(`[TTS] Audio playback completed for ${agent}`);
+                                
+                                // Сповіщаємо orchestrator про завершення озвучення
+                                this.notifyTTSCompleted(agent);
+                                
                                 resolve();
                             };
                             audio.onerror = (e) => {
@@ -2207,5 +2211,30 @@ AtlasIntelligentChatManager.prototype.triggerAtlasTakeover = async function() {
     } catch (error) {
         this.log(`[CLARIFICATION] Error during Atlas takeover: ${error.message}`);
         this.addMessage('❌ Помилка під час автоматичного продовження', 'error');
+    }
+    }
+
+    // Сповіщення orchestrator про завершення TTS
+    async notifyTTSCompleted(agent) {
+        try {
+            // Отримуємо voice для агента
+            const voice = this.voiceSystem.agents[agent]?.voice || agent;
+            
+            const response = await fetch('http://localhost:5101/tts/completed', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ voice: voice })
+            });
+            
+            if (response.ok) {
+                this.log(`[TTS] Notified orchestrator: TTS completed for ${agent} (voice: ${voice})`);
+            } else {
+                this.log(`[TTS] Failed to notify orchestrator: ${response.status}`);
+            }
+        } catch (error) {
+            this.log(`[TTS] Error notifying orchestrator: ${error.message}`);
+        }
     }
 };
