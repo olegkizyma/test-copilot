@@ -71,6 +71,9 @@
                                 <button id="voice-toggle" class="btn btn-secondary">
                                     <span class="btn-text">🔊</span>
                                 </button>
+                                <button id="test-tts" class="btn btn-secondary" onclick="testTTS()">
+                                    <span class="btn-text">🔊Test</span>
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -102,6 +105,62 @@
                 .then(registration => console.log('SW registered:', registration))
                 .catch(error => console.log('SW registration failed:', error));
         }
+        
+        // Test TTS function
+        window.testTTS = async function() {
+            try {
+                console.log('🔊 Testing TTS...');
+                
+                const response = await fetch('http://localhost:3001/tts', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        text: 'Тест TTS з головної сторінки ATLAS',
+                        voice: 'dmytro',
+                        return_audio: true
+                    })
+                });
+                
+                if (response.ok) {
+                    const audioBlob = await response.blob();
+                    console.log('✅ Audio blob received:', audioBlob.size, 'bytes');
+                    
+                    const audioUrl = URL.createObjectURL(audioBlob);
+                    const audio = new Audio(audioUrl);
+                    
+                    audio.onended = () => {
+                        URL.revokeObjectURL(audioUrl);
+                        console.log('✅ TTS test completed successfully');
+                        
+                        // Notify orchestrator about completion (test)
+                        fetch('http://localhost:5101/tts/completed', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ voice: 'dmytro' })
+                        }).then(() => {
+                            console.log('✅ Notified orchestrator about TTS completion');
+                        }).catch(err => {
+                            console.warn('⚠️ Failed to notify orchestrator:', err);
+                        });
+                    };
+                    
+                    audio.onerror = (error) => {
+                        console.error('❌ Audio playback error:', error);
+                    };
+                    
+                    await audio.play();
+                    console.log('🎵 Audio started playing...');
+                    
+                } else {
+                    console.error('❌ TTS request failed:', response.status, response.statusText);
+                }
+                
+            } catch (error) {
+                console.error('❌ TTS test error:', error);
+            }
+        };
     </script>
 </body>
 </html>
