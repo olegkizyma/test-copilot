@@ -28,6 +28,25 @@
     "npm": ">=8.0.0"
   },
   "dependencies": {
+    "axios": "^1.12.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.2",
+    "express": "^4.21.2",
     "ws": "^8.18.3"
-  }
+  },
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/olegkizyma/test-copilot.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/olegkizyma/test-copilot/issues"
+  },
+  "homepage": "https://github.com/olegkizyma/test-copilot#readme"
 }

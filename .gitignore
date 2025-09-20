@@ -1,86 +1,6 @@
 # Python
 __pycache__/
 *.py[cod]
-*.so
-venv/
-.venv/
-env/
-ENV/
-venv3.*/
-
-# Virtualenvs
-**/.venv/
-**/venv/
-
-# Logs
-logs/
-*.log
-
-# Node
-node_modules/
-frontend_new/orchestrator/node_modules/
-goose/ui/desktop/node_modules/
-
-# Build outputs
-dist/
-build/
-target/
-goose/target/
-
-# IDE/editor
-.vscode/
-.idea/
-*.sublime-workspace
-
-# Data / models / audio
-*.pth
-*.npz
-*.ark
-model.pth
-feats_stats.npz
-spk_xvector.ark
-*.wav
-*.flac
-
-# Python egg / pip
-*.egg-info/
-*.egg
-
-# caches
-**/__pycache__/
-**/*.pyc
-**/*.pyo
-
-# goose-specific caches and build artifacts
-goose/goose/mcp-hermit/cache/
-goose/goose/mcp-hermit/cache/**
-goose/goose/mcp-hermit/bin/
-goose/target/
-goose/goose/.venv/
-
-# Ukrainian TTS artifacts
-ukrainian-tts*/venv*
-ukrainian-tts*/model*
-ukrainian-tts*/feats_stats.npz
-ukrainian-tts*/spk_xvector.ark
-
-# fallback_llm
-fallback_llm/node_modules/
-
-# temporary files
-*.tmp
-*.temp
-*.swp
-.*.swp
-*.swo
-
-# OS files
-.DS_Store
-._*
-Thumbs.db
-# Python
-__pycache__/
-*.py[cod]
 *$py.class
 *.so
 .Python
@@ -98,6 +18,122 @@ var/
 wheels/
 *.egg-info/
 .installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+.venv/
+env/
+ENV/
+venv3.*/
+**/.venv/
+**/venv/
+
+# Node.js
+node_modules/
+frontend_new/orchestrator/node_modules/
+fallback_llm/node_modules/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnp.*
+.pnp.js
+
+# Build outputs
+dist/
+build/
+target/
+*.pdb
+*.user
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# IDE/editor
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+.project
+.pydevproject
+.settings/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Data / models / audio
+*.pth
+*.npz
+*.ark
+model.pth
+feats_stats.npz
+spk_xvector.ark
+*.wav
+*.flac
+
+# goose-specific caches and build artifacts
+goose/goose/mcp-hermit/cache/
+goose/goose/mcp-hermit/cache/**
+goose/goose/mcp-hermit/bin/
+goose/target/
+goose/goose/.venv/
+
+# Ukrainian TTS artifacts
+ukrainian-tts*/venv*
+ukrainian-tts*/model*
+ukrainian-tts*/feats_stats.npz
+ukrainian-tts*/spk_xvector.ark
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+.*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Package files
+package-lock.json
+yarn.lock
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Local development
+.local/
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 *.egg
 .env
 .venv

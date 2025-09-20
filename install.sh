@@ -115,6 +115,9 @@ echo "📦 Installing Node.js dependencies..."
 if [ -d "frontend_new/orchestrator" ]; then
     echo "Installing orchestrator dependencies..."
     cd frontend_new/orchestrator
+    # Install specific dependencies first to ensure they're available
+    npm install express cors dotenv axios ws
+    # Then install all dependencies from package.json
     npm install --silent
     cd ../..
     echo "✅ Orchestrator dependencies installed"
@@ -145,6 +148,23 @@ else
     echo "⚠️  Goose not found. Please install with:"
     echo "   brew install block-goose-cli"
     echo "   OR curl -fsSL https://goose.build/install.sh | sh"
+fi
+
+echo ""
+echo "🔄 Setting up Orchestrator dependencies..."
+cd "$BASEDIR/orchestrator"
+if [ ! -d "node_modules" ]; then
+    echo "Installing Node.js dependencies for Orchestrator..."
+    npm install express@4.18.2 three@0.158.0 ws@8.13.0
+    npm install
+else
+    echo "✅ Node.js dependencies already installed"
+fi
+
+# Перевіряємо чи порт 5101 вільний
+if lsof -i :5101 > /dev/null; then
+    echo "⚠️  Port 5101 is in use. Attempting to kill the process..."
+    lsof -ti :5101 | xargs kill -9
 fi
 
 echo ""
