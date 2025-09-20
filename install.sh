@@ -52,7 +52,7 @@ fi
 # Activate and install Python packages
 source web/venv/bin/activate
 pip install -q --upgrade pip
-pip install -q -r requirements-all.txt
+pip install -q -r requirements.txt
 echo "✅ Python dependencies installed"
 
 # Create virtual environment for TTS if needed
@@ -89,19 +89,8 @@ if command -v goose >/dev/null 2>&1; then
         echo "⚠️  Goose setup script not found"
     fi
     
-    # Install Playwright MCP server if not exists
-    if [ ! -d "goose/mcp/playwright" ]; then
-        echo "Installing Playwright MCP server..."
-        mkdir -p goose/mcp
-        cd goose/mcp
-        git clone https://github.com/modelcontextprotocol/servers.git temp_servers
-        cp -r temp_servers/src/playwright ./
-        rm -rf temp_servers
-        cd playwright
-        npm install
-        cd ../../..
-        echo "✅ Playwright MCP server installed"
-    fi
+    # MCP servers are now managed by Goose directly
+    echo "✅ MCP servers managed by Goose"
     
     echo "✅ Goose environment configured"
 else
@@ -123,14 +112,8 @@ if [ -d "orchestrator" ]; then
     echo "✅ Orchestrator dependencies installed"
 fi
 
-# Install fallback LLM dependencies
-if [ -d "fallback_llm" ]; then
-    echo "Installing fallback LLM dependencies..."
-    cd fallback_llm
-    npm install --silent
-    cd ..
-    echo "✅ Fallback LLM dependencies installed"
-fi
+# Fallback LLM is now integrated into orchestrator
+echo "✅ Fallback LLM integrated into orchestrator"
 
 echo ""
 echo "🦆 Checking Goose installation..."
