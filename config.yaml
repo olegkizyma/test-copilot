@@ -103,7 +103,7 @@ security:
 
 # Fallback система
 fallback:
-  enabled: true
+  enabled: false
   port: 4000
   model: "mistral-ai/ministral-3b"
 

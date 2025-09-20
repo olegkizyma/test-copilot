@@ -95,7 +95,8 @@ export const WORKFLOW_STAGES = [
 export const WORKFLOW_CONDITIONS = {
     async tetyana_needs_clarification(response) {
         if (!response?.content || response.agent !== 'tetyana') return false;
-        const aiAnalysis = await analyzeAgentResponse('tetyana', response.content, 'execution_state');
+        const aiAnalysis = await analyzeAgentResponse('tetyana', response.content, 'execution');
+        console.log(`[WORKFLOW] Tetyana clarification check: ${aiAnalysis.predicted_state} (confidence: ${aiAnalysis.confidence})`);
         return aiAnalysis.predicted_state === 'needs_clarification';
     },
 
@@ -107,7 +108,7 @@ export const WORKFLOW_CONDITIONS = {
 
     async tetyana_completed_task(response) {
         if (!response?.content || response.agent !== 'tetyana') return false;
-        const aiAnalysis = await analyzeAgentResponse('tetyana', response.content, 'execution_state');
+        const aiAnalysis = await analyzeAgentResponse('tetyana', response.content, 'execution');
         console.log(`[WORKFLOW] Tetyana execution state: ${aiAnalysis.predicted_state} (${aiAnalysis.confidence})`);
         return aiAnalysis.predicted_state === 'completed';
     },
@@ -117,7 +118,7 @@ export const WORKFLOW_CONDITIONS = {
         const latestResponse = responses[responses.length - 1];
         if (!latestResponse?.content || latestResponse.agent !== 'tetyana') return false;
         
-        const aiAnalysis = await analyzeAgentResponse('tetyana', latestResponse.content, 'execution_state');
+        const aiAnalysis = await analyzeAgentResponse('tetyana', latestResponse.content, 'execution');
         return aiAnalysis.predicted_state === 'blocked';
     },
 
@@ -292,6 +293,46 @@ async function callAIModel({ agent, stage, response }) {
         - Описує конкретні виконані кроки
         - Надає результати роботи
         - "можу продовжувати"`,
+        
+        execution: `You are analyzing Ukrainian text from Tetyana to determine her execution state.
+
+        ANALYZE FOR:
+        1. Task completion status
+        2. Need for clarification or help
+        3. Blocking issues or problems
+        4. Progress indicators
+
+        RETURN ONLY JSON:
+        {
+            "predicted_state": "completed" | "incomplete" | "blocked" | "needs_clarification",
+            "confidence": number between 0.0-1.0
+        }
+
+        KEY INDICATORS:
+        Completed:
+        - "готово", "виконано", "зроблено"
+        - Describes specific completed actions
+        - Provides concrete results
+        - "завдання виконано"
+
+        Needs Clarification:
+        - "не розумію", "незрозуміло"
+        - "потрібно більше інформації"
+        - "як саме?", "що маєте на увазі?"
+        - "уточніть будь ласка"
+        - Direct questions to Atlas
+
+        Blocked:
+        - "не можу виконати"
+        - "виникла помилка"
+        - "немає доступу"
+        - Technical problems described
+
+        Incomplete:
+        - "працюю над цим"
+        - "спробую ще раз"
+        - Partial completion described
+        - "продовжую роботу"`,
         
         task_completion: `You are analyzing Ukrainian text from Tetyana to determine task completion status.
 
@@ -484,6 +525,28 @@ function localFallbackAnalysis(stage, response) {
     const text = response.toLowerCase();
     
     switch (stage) {
+        case 'execution':
+            // Перевіряємо на потребу в уточненнях
+            if (text.includes('не розумію') || text.includes('незрозуміло') ||
+                text.includes('уточніть') || text.includes('як саме') ||
+                text.includes('що маєте на увазі') || text.includes('потрібно більше інформації')) {
+                return { predicted_state: 'needs_clarification', confidence: 0.9 };
+            }
+            // Перевіряємо на завершення
+            if (text.includes('готово') && 
+                (text.includes('створила') || text.includes('відкрила') || 
+                 text.includes('записала') || text.includes('виконала') ||
+                 text.includes('зроблено') || text.includes('додала'))) {
+                return { predicted_state: 'completed', confidence: 0.85 };
+            }
+            // Перевіряємо на блокування
+            if (text.includes('не можу') || text.includes('виникла помилка') ||
+                text.includes('не вдалося') || text.includes('помилка')) {
+                return { predicted_state: 'blocked', confidence: 0.8 };
+            }
+            // За замовчуванням - incomplete
+            return { predicted_state: 'incomplete', confidence: 0.6 };
+            
         case 'task_completion':
             // Позитивні індикатори завершення
             if (text.includes('готово') && 
