@@ -102,7 +102,8 @@ export const WORKFLOW_CONDITIONS = {
 
     async atlas_provided_clarification(response) {
         if (!response?.content || response.agent !== 'atlas') return false;
-        const aiAnalysis = await analyzeAgentResponse('atlas', response.content, 'clarification_state');
+        const aiAnalysis = await analyzeAgentResponse('atlas', response.content, 'clarification');
+        console.log(`[WORKFLOW] Atlas clarification check: ${aiAnalysis.predicted_state} (confidence: ${aiAnalysis.confidence})`);
         return aiAnalysis.predicted_state === 'clarified';
     },
 
@@ -124,8 +125,9 @@ export const WORKFLOW_CONDITIONS = {
 
     async grisha_provided_diagnosis(response) {
         if (!response?.content || response.agent !== 'grisha') return false;
-        const aiAnalysis = await analyzeAgentResponse('grisha', response.content, 'diagnosis_state');
-        return aiAnalysis.predicted_state === 'problem_identified';
+        const aiAnalysis = await analyzeAgentResponse('grisha', response.content, 'block_detection');
+        console.log(`[WORKFLOW] Grisha diagnosis check: ${aiAnalysis.predicted_state} (confidence: ${aiAnalysis.confidence})`);
+        return aiAnalysis.predicted_state === 'blocked';
     },
 
     async should_complete_workflow(response) {
@@ -140,7 +142,7 @@ export const WORKFLOW_CONDITIONS = {
 
         // 2. Перевірка на успішну верифікацію
         const verificationPassed = response?.content && response.agent === 'grisha' &&
-            (await analyzeAgentResponse('grisha', response.content, 'verification_state')).predicted_state === 'verification_passed';
+            (await analyzeAgentResponse('grisha', response.content, 'verification_check')).predicted_state === 'verification_passed';
         if (verificationPassed) {
             response.predicted_state = 'success';
             return true;
@@ -333,6 +335,35 @@ async function callAIModel({ agent, stage, response }) {
         - "спробую ще раз"
         - Partial completion described
         - "продовжую роботу"`,
+        
+        clarification: `You are analyzing Ukrainian text from Atlas to determine if he provided clarification.
+
+        ANALYZE FOR:
+        1. Direct answers to Tetyana's questions
+        2. Specific guidance and instructions
+        3. Concrete solutions provided
+        4. Clear next steps outlined
+
+        RETURN ONLY JSON:
+        {
+            "predicted_state": "clarified" | "not_clarified",
+            "confidence": number between 0.0-1.0
+        }
+
+        KEY INDICATORS:
+        Clarified:
+        - "Тетяна, ось що тобі потрібно"
+        - Provides specific answers to questions
+        - Gives concrete values, paths, parameters
+        - "Тепер маєш всі необхідні дані"
+        - Clear step-by-step instructions
+
+        Not Clarified:
+        - Repeats the original task
+        - Asks more questions
+        - Vague or general responses
+        - "потрібно більше інформації"
+        - No specific guidance provided`,
         
         task_completion: `You are analyzing Ukrainian text from Tetyana to determine task completion status.
 
@@ -569,6 +600,18 @@ function localFallbackAnalysis(stage, response) {
                 return { predicted_state: 'clear_to_proceed', confidence: 0.8 };
             }
             return { predicted_state: 'clear_to_proceed', confidence: 0.6 };
+            
+        case 'clarification':
+            if (text.includes('тетяна, ось що тобі потрібно') || 
+                text.includes('конкретні значення') || text.includes('чіткі інструкції') ||
+                text.includes('тепер маєш всі необхідні дані')) {
+                return { predicted_state: 'clarified', confidence: 0.9 };
+            }
+            if (text.includes('потрібно більше інформації') || 
+                text.includes('не можу уточнити')) {
+                return { predicted_state: 'not_clarified', confidence: 0.8 };
+            }
+            return { predicted_state: 'clarified', confidence: 0.6 };
             
         case 'verification_check':
             if (text.includes('підтверджено') || text.includes('все правильно') ||
