@@ -169,22 +169,39 @@ export const WORKFLOW_CONDITIONS = {
     async should_retry_cycle(response, session) {
         if (!response?.content || response.agent !== 'grisha') return false;
 
-        const aiAnalysis = await analyzeAgentResponse('grisha', response.content, 'verification_check');
-        const verificationFailed = aiAnalysis.predicted_state === 'verification_failed';
         const hasRetries = (session?.retryCycle || 0) < WORKFLOW_CONFIG.maxRetryCycles;
-
-        console.log(`[WORKFLOW] Grisha verification result: ${aiAnalysis.predicted_state} (confidence: ${aiAnalysis.confidence})`);
         console.log(`[WORKFLOW] Current retry cycle: ${session?.retryCycle || 0}, max retries: ${WORKFLOW_CONFIG.maxRetryCycles}`);
 
-        // Якщо впевненість низька - також йдем на retry
-        const lowConfidence = aiAnalysis.confidence < 0.8;
+        let verificationFailed = false;
+        let lowConfidence = false;
+
+        try {
+            const aiAnalysis = await analyzeAgentResponse('grisha', response.content, 'verification_check');
+            verificationFailed = aiAnalysis.predicted_state === 'verification_failed';
+            lowConfidence = aiAnalysis.confidence < 0.8;
+            
+            console.log(`[WORKFLOW] AI Analysis - Grisha verification result: ${aiAnalysis.predicted_state} (confidence: ${aiAnalysis.confidence})`);
+        } catch (error) {
+            console.log(`[WORKFLOW] AI Analysis failed, using fallback text analysis: ${error.message}`);
+            
+            // FALLBACK: Простий текстовий аналіз відповіді Гріші
+            const text = response.content.toLowerCase();
+            verificationFailed = text.includes('завдання не виконано') || 
+                               text.includes('не виконано') ||
+                               text.includes('проблеми:') ||
+                               text.includes('необхідно:') ||
+                               text.includes('не знайдено') ||
+                               text.includes('відсутні докази');
+            
+            console.log(`[WORKFLOW] Fallback analysis - verification failed: ${verificationFailed}`);
+        }
 
         const shouldRetry = (verificationFailed || lowConfidence) && hasRetries;
 
         if (shouldRetry) {
-            console.log(`[WORKFLOW] RETRY CYCLE: verification failed or low confidence`);
+            console.log(`[WORKFLOW] RETRY CYCLE: verification failed (${verificationFailed}) or low confidence (${lowConfidence}), retries available: ${hasRetries}`);
         } else {
-            console.log(`[WORKFLOW] NO RETRY: verification passed or no retries left`);
+            console.log(`[WORKFLOW] NO RETRY: verification passed or no retries left (hasRetries: ${hasRetries})`);
         }
 
         return shouldRetry;
@@ -338,13 +355,17 @@ async function callAIModel({ agent, stage, response }) {
         - "завдання виконано" + any description of work done
         - CRITICAL: If Tetyana says "Готово" and mentions ANY completed action, this is ALWAYS "completed"
 
-        Needs Clarification:
+        Needs Clarification (HIGHEST PRIORITY - if ANY of these appear, always choose this):
+        - "Atlas," followed by problems or questions
+        - "Atlas, виникла проблема", "Atlas, не вдалося"
+        - "Atlas, як діяти далі?", "Atlas, що робити?"
         - "не розумію", "незрозуміло"
         - "потрібно більше інформації"
         - "як саме?", "що маєте на увазі?"
         - "уточніть будь ласка"
         - Direct questions to Atlas
         - "як мені це зробити?"
+        - Any explicit request to Atlas for help or guidance
 
         Blocked:
         - "не можу виконати"
@@ -543,8 +564,8 @@ Return ONLY a valid JSON object with these exact fields:
 }
 DO NOT include any additional text, markdown formatting or explanation.`;
     
-    // Використовуємо Mistral 3B для аналізу (найшвидша - 45 req/min)
-    const MODEL = 'mistral-ai/ministral-3b';
+    // Використовуємо GPT-4o для аналізу (найкраща якість розуміння контексту)
+    const MODEL = 'openai/gpt-4o';
 
     // Формуємо чіткий prompt для аналізу
     const userPrompt = `
@@ -580,7 +601,9 @@ DO NOT include any explanations or additional text.`;
                     { role: 'system', content: systemPrompt },
                     { role: 'user', content: userPrompt }
                 ]
-            })
+            }),
+            // Додаємо timeout для запобігання зависанню
+            signal: AbortSignal.timeout(10000) // 10 секунд timeout
         });
         
         const result = await res.json();
@@ -621,7 +644,15 @@ function localFallbackAnalysis(stage, response) {
     
     switch (stage) {
         case 'execution':
-            // Перевіряємо на потребу в уточненнях
+            // Перевіряємо на потребу в уточненнях (звернення до Atlas)
+            if (text.includes('atlas,') && 
+                (text.includes('виникла проблема') || text.includes('виникли складнощі') ||
+                 text.includes('потрібна допомога') || text.includes('дай знати') ||
+                 text.includes('вибери') || text.includes('допоможи') ||
+                 text.includes('що робити') || text.includes('як діяти'))) {
+                return { predicted_state: 'needs_clarification', confidence: 0.95 };
+            }
+            // Загальні фрази для уточнень
             if (text.includes('не розумію') || text.includes('незрозуміло') ||
                 text.includes('уточніть') || text.includes('як саме') ||
                 text.includes('що маєте на увазі') || text.includes('потрібно більше інформації')) {
@@ -678,17 +709,30 @@ function localFallbackAnalysis(stage, response) {
             return { predicted_state: 'clarified', confidence: 0.6 };
             
         case 'verification_check':
-            if (text.includes('підтверджено') || text.includes('все правильно') ||
-                text.includes('успішно виконано') || text.includes('схвалено') ||
-                text.includes('добре зроблено')) {
-                return { predicted_state: 'verification_passed', confidence: 0.8 };
+            // Сильні індикатори успіху
+            if (text.includes('підтверджую виконання завдання') || 
+                text.includes('все відповідає вимогам') ||
+                text.includes('успішно виконано') || 
+                text.includes('завдання виконано правильно')) {
+                return { predicted_state: 'verification_passed', confidence: 0.9 };
             }
-            if (text.includes('не підтверджено') || text.includes('проблеми') ||
-                text.includes('завдання не виконано') || text.includes('не схвалено') ||
-                text.includes('знайдено помилки') || text.includes('потрібно доопрацювати')) {
-                return { predicted_state: 'verification_failed', confidence: 0.8 };
+            
+            // Сильні індикатори провалу (з логів Гріші)
+            if (text.includes('завдання не виконано') || 
+                text.includes('не виконано') ||
+                text.includes('проблеми:') ||
+                text.includes('необхідно:') ||
+                text.includes('не знайдено') ||
+                text.includes('відсутні докази') ||
+                text.includes('не підтверджено') ||
+                text.includes('потрібно доопрацювати') ||
+                text.includes('рекомендую') ||
+                text.includes('повертаю завдання на доопрацювання')) {
+                return { predicted_state: 'verification_failed', confidence: 0.9 };
             }
-            return { predicted_state: 'verification_passed', confidence: 0.5 };
+            
+            // За замовчуванням - провал (краще перестрахуватися)
+            return { predicted_state: 'verification_failed', confidence: 0.6 };
             
         default:
             return { predicted_state: 'needs_analysis', confidence: 0.3 };

@@ -315,6 +315,10 @@ async function executeStepByStepWorkflow(userMessage, session, res) {
         // Верифікація пройшла успішно!
         session.verified = true;
         logMessage('info', 'Verification PASSED - workflow should complete');
+        
+        // Додаткова пауза після відповіді Гріші, щоб користувач встиг прочитати
+        await new Promise(resolve => setTimeout(resolve, 2000)); // 2 секунди
+        
         logMessage('info', 'About to send workflow_completed event');
 
         // ВАЖЛИВО: Відправляємо фінальний статус ПЕРШИМ
@@ -666,8 +670,9 @@ async function executeAgentStageStepByStep(agentName, stageName, systemPrompt, u
         return response; // Повертаємо без очікування підтвердження
     }
     
-    // АВТОМАТИЧНЕ ПРОДОВЖЕННЯ З КОРОТКОЮ ПАУЗОЮ (замість очікування підтвердження)
-    const displayPause = 1500; // 1.5 секунди для читання повідомлення
+    // АВТОМАТИЧНЕ ПРОДОВЖЕННЯ З ПАУЗОЮ (замість очікування підтвердження)
+    // Для Гріші - довша пауза, щоб користувач встиг прочитати верифікацію
+    const displayPause = agentName === 'grisha' ? 3000 : 1500; // 3 сек для Гріші, 1.5 для інших
     await new Promise(resolve => setTimeout(resolve, displayPause));
     
     logMessage('info', `Step-by-step: Auto-continuing: ${agentName} - ${stageName}`);
