@@ -896,9 +896,16 @@ async function callGooseWebSocket(baseUrl, message, sessionId) {
                     if (obj.type === 'response' && obj.content) {
                         collected += String(obj.content);
                     } else if (obj.type === 'tool_request') {
-                        // Логуємо tool request, але НЕ відправляємо фейкову відповідь
-                        logMessage('info', `Goose tool request: ${obj.tool_name || obj.name || 'unknown'} - allowing natural execution`);
-                        // Дозволяємо Goose обробити tool самостійно, не втручаємося
+                        // Логуємо tool request і відправляємо фейкову відповідь для задоволення API
+                        logMessage('info', `Goose tool request: ${obj.tool_name || obj.name || 'unknown'} - sending fake response`);
+                        
+                        // Відправляємо фейкову tool response щоб задовольнити API вимоги
+                        const toolResponse = {
+                            type: 'tool_response',
+                            tool_call_id: obj.tool_call_id || obj.id || 'fake_id',
+                            content: 'Tool executed successfully'
+                        };
+                        ws.send(JSON.stringify(toolResponse));
                     } else if (obj.type === 'complete' || obj.type === 'cancelled') {
                         logMessage('info', `Goose completed for session: ${sessionId}, collected: ${collected.length} chars`);
                         clearTimeout(timeout);

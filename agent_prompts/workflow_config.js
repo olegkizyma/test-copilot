@@ -158,10 +158,16 @@ export const WORKFLOW_CONDITIONS = {
     async should_retry_cycle(response) {
         if (!response?.content || response.agent !== 'grisha') return false;
         
-        const verificationFailed = (await analyzeAgentResponse('grisha', response.content, 'verification_state')).predicted_state === 'verification_failed';
+        const aiAnalysis = await analyzeAgentResponse('grisha', response.content, 'verification_check');
+        const verificationFailed = aiAnalysis.predicted_state === 'verification_failed';
         const hasRetries = response.retryCount < WORKFLOW_CONFIG.maxRetryCycles;
         
-        return verificationFailed && hasRetries;
+        console.log(`[WORKFLOW] Grisha verification result: ${aiAnalysis.predicted_state} (confidence: ${aiAnalysis.confidence})`);
+        
+        // Якщо впевненість низька - також йдем на retry
+        const lowConfidence = aiAnalysis.confidence < 0.8;
+        
+        return (verificationFailed || lowConfidence) && hasRetries;
     }
 };
 
@@ -216,6 +222,15 @@ export const WORKFLOW_CONFIG = {
 
 // Функція для інтеграції AI для аналізу відповіді агентів
 async function analyzeAgentResponse(agentName, responseText, stageName) {
+    // Перевіряємо чи responseText валідний
+    if (!responseText || typeof responseText !== 'string' || responseText.trim() === '') {
+        console.warn(`[AI Analysis] Empty or invalid responseText for ${agentName}/${stageName}:`, responseText);
+        return {
+            predicted_state: 'needs_analysis',
+            confidence: 0.1
+        };
+    }
+    
     // Виклик до моделі AI для аналізу відповіді
     const result = await callAIModel({
         agent: agentName,
@@ -226,6 +241,15 @@ async function analyzeAgentResponse(agentName, responseText, stageName) {
 }
 async function callAIModel({ agent, stage, response }) {
     console.log(`AI MODEL: Аналіз агента: ${agent}, етап: ${stage}, відповідь: ${response}`);
+    
+    // Перевіряємо чи response не undefined
+    if (!response || response === 'undefined' || typeof response !== 'string') {
+        console.warn(`[AI Analysis] Invalid response for ${agent}/${stage}:`, response);
+        return {
+            predicted_state: getDefaultState(stage),
+            confidence: 0.1
+        };
+    }
     
     // Створюємо спеціалізовані промпти для кожного типу аналізу
     // Функція для отримання дефолтного стану
@@ -383,8 +407,8 @@ Return ONLY a valid JSON object with these exact fields:
 }
 DO NOT include any additional text, markdown formatting or explanation.`;
     
-    // Використовуємо найбільш стабільну модель для аналізу
-    const MODEL = 'openai/gpt-4o';
+    // Використовуємо Mistral 3B для аналізу (найшвидша - 45 req/min)
+    const MODEL = 'mistral-ai/ministral-3b';
 
     // Формуємо чіткий prompt для аналізу
     const userPrompt = `

@@ -21,12 +21,14 @@ const TRUNCATE_STRATEGY = String(process.env.FALLBACK_TRUNCATE_STRATEGY || 'clip
 const MODELS = (
   process.env.FALLBACK_MODELS?.split(',').map(s => s.trim()).filter(Boolean)
 ) || [
+  'mistral-ai/ministral-3b',
+  'mistral-ai/mistral-small-2503',
+  'mistral-ai/mistral-nemo',
   'gpt-4o-mini',
   'openai/gpt-4o-mini',
-  'microsoft/Phi-3.5-mini-instruct',
-  'microsoft/Phi-3-mini-4k-instruct',
-  'Meta-Llama-3.1-8B-Instruct',
-  'Mistral-Nemo'
+  'microsoft/phi-3.5-mini-instruct',
+  'microsoft/phi-4-mini-instruct',
+  'meta/meta-llama-3.1-8b-instruct'
 ];
 
 // Health

@@ -18,7 +18,7 @@ ports:
   orchestrator: 5101        # Node.js Orchestrator (Agent Management)
   recovery_bridge: 5102     # Recovery Bridge (System Recovery)
   tts_service: 3001         # Ukrainian TTS Service
-  fallback_llm: 3010        # Fallback LLM (за потреби)
+  fallback_llm: 4000        # Fallback LLM (за потреби)
 
 # Конфігурація Goose
 goose:
@@ -76,7 +76,7 @@ tts:
 workflow:
   max_stages: 9
   max_retries: 3
-  timeout_per_stage: 300    # секунд
+  timeout_per_stage: 300
   enable_verification: true
   auto_recovery: true
 
@@ -98,18 +98,18 @@ logging:
 security:
   enable_cors: true
   allowed_origins: ["*"]
-  api_timeout: 30           # секунд
+  api_timeout: 30
   max_request_size: "10MB"
 
 # Fallback система
 fallback:
-  enabled: false            # Локальний fallback LLM
-  port: 3010
-  model: "openai/gpt-4o"
+  enabled: true
+  port: 4000
+  model: "mistral-ai/ministral-3b"
 
 # Моніторинг та діагностика
 monitoring:
-  health_check_interval: 30 # секунд
+  health_check_interval: 30
   performance_metrics: true
   error_tracking: true
   auto_diagnostics: true
