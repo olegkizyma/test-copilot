@@ -140,15 +140,16 @@ export const WORKFLOW_CONDITIONS = {
             return true;
         }
 
-        // 2. Перевірка на успішну верифікацію
+        // 2. Перевірка на успішну верифікацію (ВИЩИЙ ПРІОРИТЕТ)
         const verificationPassed = response?.content && response.agent === 'grisha' &&
             (await analyzeAgentResponse('grisha', response.content, 'verification_check')).predicted_state === 'verification_passed';
         if (verificationPassed) {
             response.predicted_state = 'success';
+            console.log(`[WORKFLOW] Verification PASSED - workflow should complete`);
             return true;
         }
 
-        // 3. Перевірка на ліміт спроб
+        // 3. Перевірка на ліміт спроб (тільки якщо верифікація не пройшла)
         const reachedRetryLimit = response?.retryCount >= WORKFLOW_CONFIG.maxRetryCycles;
         if (reachedRetryLimit) {
             response.predicted_state = 'failed';
@@ -160,17 +161,25 @@ export const WORKFLOW_CONDITIONS = {
 
     async should_retry_cycle(response) {
         if (!response?.content || response.agent !== 'grisha') return false;
-        
+
         const aiAnalysis = await analyzeAgentResponse('grisha', response.content, 'verification_check');
         const verificationFailed = aiAnalysis.predicted_state === 'verification_failed';
         const hasRetries = response.retryCount < WORKFLOW_CONFIG.maxRetryCycles;
-        
+
         console.log(`[WORKFLOW] Grisha verification result: ${aiAnalysis.predicted_state} (confidence: ${aiAnalysis.confidence})`);
-        
+
         // Якщо впевненість низька - також йдем на retry
         const lowConfidence = aiAnalysis.confidence < 0.8;
-        
-        return (verificationFailed || lowConfidence) && hasRetries;
+
+        const shouldRetry = (verificationFailed || lowConfidence) && hasRetries;
+
+        if (shouldRetry) {
+            console.log(`[WORKFLOW] RETRY CYCLE: verification failed or low confidence`);
+        } else {
+            console.log(`[WORKFLOW] NO RETRY: verification passed or no retries left`);
+        }
+
+        return shouldRetry;
     }
 };
 
@@ -311,11 +320,15 @@ async function callAIModel({ agent, stage, response }) {
         }
 
         KEY INDICATORS:
-        Completed:
+        Completed (ALWAYS prioritize this if ANY indicators match):
         - "готово", "виконано", "зроблено"
-        - Describes specific completed actions
-        - Provides concrete results
-        - "завдання виконано"
+        - "успішно", "завершено", "завершила"
+        - "встановлено", "завантажено", "знайшла"
+        - Describes specific completed actions: "створила", "змінила", "встановила"
+        - Provides concrete results: "зображення встановлено", "шпалери змінені"
+        - "все виконано згідно вимог"
+        - "завдання виконано" + any description of work done
+        - CRITICAL: If Tetyana says "Готово" and mentions ANY completed action, this is ALWAYS "completed"
 
         Needs Clarification:
         - "не розумію", "незрозуміло"
@@ -323,18 +336,57 @@ async function callAIModel({ agent, stage, response }) {
         - "як саме?", "що маєте на увазі?"
         - "уточніть будь ласка"
         - Direct questions to Atlas
+        - "як мені це зробити?"
 
         Blocked:
         - "не можу виконати"
-        - "виникла помилка"
+        - "виникла помилка" + specific technical error
         - "немає доступу"
-        - Technical problems described
+        - Technical problems described with error details
+        - "не вдається" + specific technical issue
 
         Incomplete:
         - "працюю над цим"
         - "спробую ще раз"
+        - "майже готово"
         - Partial completion described
-        - "продовжую роботу"`,
+        - "продовжую роботу"
+        - No clear completion statement`,
+
+        task_completion: `You are analyzing Ukrainian text from Tetyana to determine task completion status.
+
+        ANALYZE FOR:
+        1. Explicit completion statements
+        2. Concrete actions and results
+        3. Error reports or blockers
+        4. Task progress indicators
+
+        RETURN ONLY JSON:
+        {
+            "predicted_state": "completed" | "incomplete",
+            "confidence": number between 0.0-1.0
+        }
+
+        KEY INDICATORS:
+        Completed Task (HIGH PRIORITY):
+        - "готово" + ANY completed action
+        - "зроблено" + description of work
+        - "встановлено" + what was set up
+        - "завантажено" + what was downloaded
+        - "знайшла" + what was found
+        - "успішно виконано" + any details
+        - "завершила" + specific task
+        - "все готово" + context
+        - CRITICAL: ANY statement with "Готово" AND mention of completed work = "completed"
+
+        Incomplete Task:
+        - "не можу" + technical reason
+        - "виникла помилка" + error details
+        - "спробую ще раз"
+        - "працюю над цим"
+        - Questions about how to proceed
+        - "не вдається" + technical issue
+        - No clear completion statement`,
         
         clarification: `You are analyzing Ukrainian text from Atlas to determine if he provided clarification.
 

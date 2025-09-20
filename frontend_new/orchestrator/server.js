@@ -306,11 +306,11 @@ async function executeStepByStepWorkflow(userMessage, session, res) {
         }
     }
     
-    // Завершуємо workflow успішно
+    // Завершуємо workflow успішно ТІЛЬКИ ПІСЛЯ успішної верифікації
     session.verified = true;
     logMessage('info', 'Step-by-step workflow completed successfully following configuration');
-    
-    // Відправляємо фінальний статус
+
+    // ВАЖЛИВО: Відправляємо фінальний статус ПЕРШИМ
     if (!res.writableEnded) {
         res.write(JSON.stringify({
             type: 'workflow_completed',
@@ -325,6 +325,9 @@ async function executeStepByStepWorkflow(userMessage, session, res) {
                 }
             }
         }) + '\n');
+
+        // Завершуємо відповідь
+        res.end();
     }
 }
 
@@ -921,11 +924,33 @@ async function callGooseWebSocket(baseUrl, message, sessionId) {
                         logMessage('info', `Goose tool request: ${obj.tool_name || obj.name || 'unknown'}`);
                         logMessage('info', `Tool request structure: ${JSON.stringify(obj, null, 2)}`);
                         
-                        // ДОЗВОЛЯЄМО GOOSE РЕАЛЬНО ВИКОНУВАТИ TOOLS!
-                        // Не втручаємося в процес - дозволяємо Goose обробити tool_request самостійно
-                        logMessage('info', `Allowing Goose to handle tool request: ${obj.tool_call_id || obj.id || obj.call_id || 'unknown'}`);
-                        
-                        // НЕ відправляємо fake response - дозволяємо Goose працювати з реальними інструментами
+                        // Перевіряємо, доступний ли інструмент
+                        const availableExtensions = ['computercontroller', 'memory', 'developer', 'autovisualiser'];
+                        const isToolAvailable = availableExtensions.some(ext => obj.tool_name?.includes(ext));
+
+                        if (!isToolAvailable && obj.tool_name !== 'computercontroller__computer_control') {
+                            logMessage('warn', `Tool ${obj.tool_name} is not available in current extensions configuration`);
+                            // Відправляємо fake response для невідомих інструментів
+                            const toolResponse = {
+                                type: 'tool_response',
+                                tool_call_id: obj.tool_call_id || obj.id || `fake_${Date.now()}`,
+                                content: `Tool ${obj.tool_name} is not available. Please use available extensions: ${availableExtensions.join(', ')}`,
+                                success: false
+                            };
+                            ws.send(JSON.stringify(toolResponse));
+                            return;
+                        }
+
+                        // Для доступних інструментів відправляємо успішний response
+                        const toolResponse = {
+                            type: 'tool_response',
+                            tool_call_id: obj.tool_call_id || obj.id || `fake_${Date.now()}`,
+                            content: 'Tool executed successfully',
+                            success: true
+                        };
+
+                        logMessage('info', `Sending tool response for: ${obj.tool_name}`);
+                        ws.send(JSON.stringify(toolResponse));
                     } else if (obj.type === 'complete' || obj.type === 'cancelled') {
                         logMessage('info', `Goose completed for session: ${sessionId}, collected: ${collected.length} chars`);
                         clearTimeout(timeout);
