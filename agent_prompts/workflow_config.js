@@ -93,23 +93,23 @@ export const WORKFLOW_STAGES = [
 ];
 
 export const WORKFLOW_CONDITIONS = {
-    async tetyana_needs_clarification(response) {
-        if (!response?.content || response.agent !== 'tetyana') return false;
-        const aiAnalysis = await analyzeAgentResponse('tetyana', response.content, 'execution');
+    async tetyana_needs_clarification(data) {
+        if (!data?.response?.content || data.response.agent !== 'tetyana') return false;
+        const aiAnalysis = await analyzeAgentResponse('tetyana', data.response.content, 'execution');
         console.log(`[WORKFLOW] Tetyana clarification check: ${aiAnalysis.predicted_state} (confidence: ${aiAnalysis.confidence})`);
         return aiAnalysis.predicted_state === 'needs_clarification';
     },
 
-    async atlas_provided_clarification(response) {
-        if (!response?.content || response.agent !== 'atlas') return false;
-        const aiAnalysis = await analyzeAgentResponse('atlas', response.content, 'clarification');
+    async atlas_provided_clarification(data) {
+        if (!data?.response?.content || data.response.agent !== 'atlas') return false;
+        const aiAnalysis = await analyzeAgentResponse('atlas', data.response.content, 'clarification');
         console.log(`[WORKFLOW] Atlas clarification check: ${aiAnalysis.predicted_state} (confidence: ${aiAnalysis.confidence})`);
         return aiAnalysis.predicted_state === 'clarified';
     },
 
-    async tetyana_completed_task(response) {
-        if (!response?.content || response.agent !== 'tetyana') return false;
-        const aiAnalysis = await analyzeAgentResponse('tetyana', response.content, 'execution');
+    async tetyana_completed_task(data) {
+        if (!data?.response?.content || data.response.agent !== 'tetyana') return false;
+        const aiAnalysis = await analyzeAgentResponse('tetyana', data.response.content, 'execution');
         console.log(`[WORKFLOW] Tetyana execution state: ${aiAnalysis.predicted_state} (${aiAnalysis.confidence})`);
         return aiAnalysis.predicted_state === 'completed';
     },
@@ -118,55 +118,63 @@ export const WORKFLOW_CONDITIONS = {
         if (!Array.isArray(responses)) return false;
         const latestResponse = responses[responses.length - 1];
         if (!latestResponse?.content || latestResponse.agent !== 'tetyana') return false;
-        
+
         const aiAnalysis = await analyzeAgentResponse('tetyana', latestResponse.content, 'execution');
         return aiAnalysis.predicted_state === 'blocked';
     },
 
-    async grisha_provided_diagnosis(response) {
-        if (!response?.content || response.agent !== 'grisha') return false;
-        const aiAnalysis = await analyzeAgentResponse('grisha', response.content, 'block_detection');
+    async grisha_provided_diagnosis(data) {
+        if (!data?.response?.content || data.response.agent !== 'grisha') return false;
+        const aiAnalysis = await analyzeAgentResponse('grisha', data.response.content, 'block_detection');
         console.log(`[WORKFLOW] Grisha diagnosis check: ${aiAnalysis.predicted_state} (confidence: ${aiAnalysis.confidence})`);
         return aiAnalysis.predicted_state === 'blocked';
     },
 
-    async should_complete_workflow(response) {
+    async verification_failed(data) {
+        if (!data?.response?.content || data.response.agent !== 'grisha') return false;
+        const aiAnalysis = await analyzeAgentResponse('grisha', data.response.content, 'verification_check');
+        console.log(`[WORKFLOW] Grisha verification failed check: ${aiAnalysis.predicted_state} (confidence: ${aiAnalysis.confidence})`);
+        return aiAnalysis.predicted_state === 'verification_failed';
+    },
+
+    async should_complete_workflow(data) {
         // Перевіряємо умови завершення workflow
-        
+
         // 1. Перевірка на timeout
-        const hasTimedOut = Date.now() - response?.startTime >= WORKFLOW_CONFIG.timeoutPerStage * WORKFLOW_CONFIG.maxTotalStages;
+        const hasTimedOut = Date.now() - (data?.response?.timestamp || Date.now()) >= WORKFLOW_CONFIG.timeoutPerStage * WORKFLOW_CONFIG.maxTotalStages;
         if (hasTimedOut) {
-            response.predicted_state = 'timeout_exceeded';
+            console.log(`[WORKFLOW] Timeout exceeded - workflow should complete`);
             return true;
         }
 
         // 2. Перевірка на успішну верифікацію (ВИЩИЙ ПРІОРИТЕТ)
-        const verificationPassed = response?.content && response.agent === 'grisha' &&
-            (await analyzeAgentResponse('grisha', response.content, 'verification_check')).predicted_state === 'verification_passed';
-        if (verificationPassed) {
-            response.predicted_state = 'success';
-            console.log(`[WORKFLOW] Verification PASSED - workflow should complete`);
-            return true;
+        if (data?.response?.content && data?.response?.agent === 'grisha') {
+            const aiAnalysis = await analyzeAgentResponse('grisha', data.response.content, 'verification_check');
+            if (aiAnalysis.predicted_state === 'verification_passed') {
+                console.log(`[WORKFLOW] Verification PASSED - workflow should complete`);
+                return true;
+            }
         }
 
         // 3. Перевірка на ліміт спроб (тільки якщо верифікація не пройшла)
-        const reachedRetryLimit = response?.retryCount >= WORKFLOW_CONFIG.maxRetryCycles;
+        const reachedRetryLimit = (data?.session?.retryCycle || 0) >= WORKFLOW_CONFIG.maxRetryCycles;
         if (reachedRetryLimit) {
-            response.predicted_state = 'failed';
+            console.log(`[WORKFLOW] Retry limit reached - workflow should complete`);
             return true;
         }
 
         return false;
     },
 
-    async should_retry_cycle(response) {
+    async should_retry_cycle(response, session) {
         if (!response?.content || response.agent !== 'grisha') return false;
 
         const aiAnalysis = await analyzeAgentResponse('grisha', response.content, 'verification_check');
         const verificationFailed = aiAnalysis.predicted_state === 'verification_failed';
-        const hasRetries = response.retryCount < WORKFLOW_CONFIG.maxRetryCycles;
+        const hasRetries = (session?.retryCycle || 0) < WORKFLOW_CONFIG.maxRetryCycles;
 
         console.log(`[WORKFLOW] Grisha verification result: ${aiAnalysis.predicted_state} (confidence: ${aiAnalysis.confidence})`);
+        console.log(`[WORKFLOW] Current retry cycle: ${session?.retryCycle || 0}, max retries: ${WORKFLOW_CONFIG.maxRetryCycles}`);
 
         // Якщо впевненість низька - також йдем на retry
         const lowConfidence = aiAnalysis.confidence < 0.8;
@@ -480,18 +488,22 @@ async function callAIModel({ agent, stage, response }) {
 
         KEY INDICATORS:
         Verification Passed:
-        - "підтверджую", "схвалено"
+        - "підтверджую", "схвалено", "схвалюю"
         - "все правильно", "відповідає вимогам"
-        - "успішно виконано"
+        - "успішно виконано", "добре зроблено"
         - "якість відповідає очікуванням"
+        - "завдання виконано правильно"
+        - "результат задовільний"
         - Конкретний опис що саме зроблено правильно
 
         Verification Failed:
-        - "не підтверджую", "відхилено"
-        - "знайдено помилки", "є проблеми"
-        - "потрібно доопрацювати"
-        - "не відповідає вимогам"
-        - Конкретний опис проблем`,
+        - "не підтверджую", "відхилено", "відхиляю"
+        - "знайдено помилки", "є проблеми", "є недоліки"
+        - "потрібно доопрацювати", "потрібно виправити"
+        - "не відповідає вимогам", "не приймаю"
+        - "завдання не виконано", "робота не завершена"
+        - "потрібні покращення", "є помилки"
+        - Конкретний опис проблем або недоліків`,
 
         block_detection: `You are analyzing Ukrainian text from Tetyana for blocking issues.
 
@@ -667,10 +679,13 @@ function localFallbackAnalysis(stage, response) {
             
         case 'verification_check':
             if (text.includes('підтверджено') || text.includes('все правильно') ||
-                text.includes('успішно виконано')) {
+                text.includes('успішно виконано') || text.includes('схвалено') ||
+                text.includes('добре зроблено')) {
                 return { predicted_state: 'verification_passed', confidence: 0.8 };
             }
-            if (text.includes('не підтверджено') || text.includes('проблеми')) {
+            if (text.includes('не підтверджено') || text.includes('проблеми') ||
+                text.includes('завдання не виконано') || text.includes('не схвалено') ||
+                text.includes('знайдено помилки') || text.includes('потрібно доопрацювати')) {
                 return { predicted_state: 'verification_failed', confidence: 0.8 };
             }
             return { predicted_state: 'verification_passed', confidence: 0.5 };
