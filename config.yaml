@@ -37,7 +37,7 @@ agents:
     role: "coordinator"
     color: "#00ff00"
     signature: "[ATLAS]"
-    voice: "dmytro"
+    voice: "oleksa"
     priority: 1
     description: "Координатор, стратег, куратор завдань"
   

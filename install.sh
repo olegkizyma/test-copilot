@@ -43,14 +43,14 @@ fi
 echo ""
 echo "📦 Installing Python dependencies..."
 
-# Create virtual environment for frontend
-if [ ! -d "frontend_new/venv" ]; then
+# Create virtual environment for web interface
+if [ ! -d "web/venv" ]; then
     echo "Creating Python virtual environment..."
-    python3 -m venv frontend_new/venv
+    python3 -m venv web/venv
 fi
 
 # Activate and install Python packages
-source frontend_new/venv/bin/activate
+source web/venv/bin/activate
 pip install -q --upgrade pip
 pip install -q -r requirements-all.txt
 echo "✅ Python dependencies installed"
@@ -112,14 +112,14 @@ echo ""
 echo "📦 Installing Node.js dependencies..."
 
 # Install orchestrator dependencies
-if [ -d "frontend_new/orchestrator" ]; then
+if [ -d "orchestrator" ]; then
     echo "Installing orchestrator dependencies..."
-    cd frontend_new/orchestrator
+    cd orchestrator
     # Install specific dependencies first to ensure they're available
     npm install express cors dotenv axios ws
     # Then install all dependencies from package.json
     npm install --silent
-    cd ../..
+    cd ..
     echo "✅ Orchestrator dependencies installed"
 fi
 
@@ -151,14 +151,11 @@ else
 fi
 
 echo ""
-echo "🔄 Setting up Orchestrator dependencies..."
-cd "$BASEDIR/orchestrator"
-if [ ! -d "node_modules" ]; then
-    echo "Installing Node.js dependencies for Orchestrator..."
-    npm install express@4.18.2 three@0.158.0 ws@8.13.0
-    npm install
+echo "🔄 Verifying Orchestrator setup..."
+if [ -d "orchestrator/node_modules" ]; then
+    echo "✅ Orchestrator dependencies verified"
 else
-    echo "✅ Node.js dependencies already installed"
+    echo "⚠️  Orchestrator dependencies may need reinstallation"
 fi
 
 # Перевіряємо чи порт 5101 вільний

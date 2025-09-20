@@ -73,17 +73,19 @@ atlas4/
 ├── scripts/                   # 🛠️ Допоміжні скрипти
 ├── fallback_llm/              # 🤖 Резервний LLM сервер
 ├── logs/                      # 📝 Логування системи
-└── _UNUSED_FILES/             # 🗃️ Архів невикористаних файлів
+└── unused_files/              # 🗃️ Архів невикористаних файлів
 ```
 
 **Призначення**: Основне управління та документація всієї системи.
 
 ---
 
-### `/agent_prompts/` - Інтелект агентів
+### `/prompts/` - Інтелект агентів
 ```
-agent_prompts/
-├── workflow_config.js         # ⚙️ Конфігурація послідовності workflow
+prompts/
+├── system/                    # 🔧 Системні промпти та правила
+│   ├── state_analysis_prompts.js      # 🤖 Промпти для аналізу станів агентів
+│   └── README.md                       # 📖 Документація системних промптів
 ├── atlas/                     # 🧠 Промпти координатора Atlas
 │   ├── stage1_initial_processing.js    # 📝 Перша обробка завдання
 │   ├── stage3_clarification.js         # ❓ Уточнення від користувача
@@ -101,29 +103,57 @@ agent_prompts/
 
 ---
 
-### `/frontend_new/` - Веб-інтерфейс та оркестратор
+### `/web/` - Веб-інтерфейс
 ```
-frontend_new/
-├── app/                       # 🌐 Flask веб-додаток
-│   ├── atlas_server.py        # 🖥️ Головний сервер (порт 5001)
-│   ├── goose_client.py        # 🔌 Клієнт для Goose API
-│   ├── static/                # 📁 Статичні ресурси
-│   │   ├── css/main.css       # 🎨 Стилі інтерфейсу
-│   │   ├── js/
-│   │   │   ├── app.js         # 📱 Основна логіка додатку
-│   │   │   ├── intelligent-chat-manager.js  # 💬 Менеджер чату з агентами
-│   │   │   ├── status-manager.js            # 📊 Управління статусами
-│   │   │   └── logger-manager.js            # 📋 Система логування
-│   │   └── assets/            # 🖼️ Зображення, іконки, 3D моделі
-│   └── templates/index.html   # 📄 Головна сторінка
-├── orchestrator/              # 🎭 Node.js оркестратор
-│   ├── server.js              # 🎯 Головний оркестратор (порт 5101)
-│   └── server_no_verification.js  # 🎯 Спрощена версія без верифікації
-└── config/                    # ⚙️ Конфігураційні файли
-    └── recovery_bridge_integration.js  # 🌉 Мостовий сервіс
+web/
+├── atlas_server.py            # 🖥️ Головний Flask сервер (порт 5001)
+├── goose_client.py            # 🔌 Клієнт для Goose API
+├── simple_server.py           # 🔧 Спрощений сервер для тестування
+├── requirements.txt           # 🐍 Python залежності для веб-інтерфейсу
+├── venv/                      # 🐍 Python віртуальне середовище
+├── static/                    # 📁 Статичні ресурси
+│   ├── css/main.css           # 🎨 Стилі інтерфейсу
+│   ├── js/
+│   │   ├── app.js             # 📱 Основна логіка додатку
+│   │   ├── intelligent-chat-manager.js  # 💬 Менеджер чату з агентами
+│   │   ├── status-manager.js  # 📊 Управління статусами
+│   │   └── logger-manager.js  # 📋 Система логування
+│   └── assets/                # 🖼️ Зображення, іконки, 3D моделі
+└── templates/index.html       # 📄 Головна сторінка
 ```
 
-**Призначення**: Веб-інтерфейс для взаємодії з користувачем та оркестратор для управління агентами.
+**Призначення**: Веб-інтерфейс для взаємодії з користувачем та відображення роботи агентів.
+
+---
+
+### `/orchestrator/` - Управління агентами
+```
+orchestrator/
+├── server.js                  # 🎯 Головний оркестратор (порт 5101)
+├── server_no_verification.js  # 🎯 Спрощена версія без верифікації
+├── package.json               # 📦 Node.js залежності
+├── package-lock.json          # 🔒 Зафіксовані версії залежностей
+└── node_modules/              # 📦 Встановлені Node.js модулі
+```
+
+**Призначення**: Node.js оркестратор для управління workflow агентів та координації їх роботи.
+
+---
+
+### `/config/` - Конфігураційні модулі
+```
+config/
+├── configuration_migrator.py  # 🔄 Міграція конфігурацій
+├── intelligent_config.py      # 🧠 Розумна конфігурація системи
+├── intelligent_orchestrator.py # 🎭 Розумний оркестратор
+├── intelligent_recovery.py    # 🔄 Система відновлення
+├── intelligent_startup.py     # 🚀 Розумний запуск системи
+├── orchestrator_integration.py # 🔗 Інтеграція з оркестратором
+├── recovery_bridge.py         # 🌉 Мостовий сервіс відновлення
+└── recovery_bridge_integration.js # 🌉 JS інтеграція мостового сервісу
+```
+
+**Призначення**: Модулі конфігурації та інтеграції різних компонентів системи.
 
 ---
 
@@ -265,8 +295,8 @@ make clean      # Очищення
 
 ### Основні конфігураційні файли:
 - `config.yaml` - Загальна конфігурація системи
-- `agent_prompts/workflow_config.js` - Послідовність етапів агентів
-- `frontend_new/config/` - Налаштування веб-інтерфейсу  
+- `orchestrator/workflow/stages.js` - Послідовність етапів агентів
+- `config/` - Модулі конфігурації та інтеграції
 - `ukrainian-tts/config.yaml` - Конфігурація TTS системи
 
 ### Змінні середовища:
@@ -348,8 +378,9 @@ make clean      # Очищення
 - ✅ Автоматична верифікація результатів
 - ✅ Централізоване управління через restart_system.sh
 - ✅ Goose WebSocket інтеграція з retry механізмом
-- ✅ Token limit захист (2000 символів)
+- ✅ Token limit захист (4000 символів)
 - ✅ Fallback LLM система
+- ✅ Рефакторинг структури проекту (frontend_new → web/orchestrator/config)
 - ✅ Система архівування невикористаних файлів
 
 ### Планові вдосконалення:

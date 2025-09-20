@@ -174,21 +174,23 @@ atlas4/
 ├── config.yaml                # ⚙️ Конфігурація системи
 ├── install.sh                 # 📦 Скрипт установки
 ├── agent_prompts/             # 🧠 Промпти та ролі агентів
-├── frontend_new/              # 🌐 Веб-інтерфейс та оркестратор
+├── web/                       # 🌐 Веб-інтерфейс (Flask)
+├── orchestrator/              # 🎭 Управління агентами (Node.js)
+├── config/                    # ⚙️ Конфігураційні модулі
 ├── ukrainian-tts/             # 🔊 TTS система
 ├── fallback_llm/              # 🤖 Резервний LLM
 ├── scripts/                   # 🛠️ Допоміжні скрипти
 ├── logs/                      # 📝 Логування системи
-└── _UNUSED_FILES/             # 🗃️ Архів старих файлів
+└── unused_files/              # 🗃️ Архів старих файлів
 ```
 
 ### Ключові файли
 
 - `restart_system.sh` - Управління всією системою
 - `config.yaml` - Головна конфігурація
-- `agent_prompts/workflow_config.js` - Конфігурація workflow
-- `frontend_new/orchestrator/server.js` - Координація агентів
-- `frontend_new/app/atlas_server.py` - Веб-інтерфейс
+- `orchestrator/workflow/stages.js` - Конфігурація workflow
+- `orchestrator/server.js` - Координація агентів
+- `web/atlas_server.py` - Веб-інтерфейс
 - `ukrainian-tts/tts_server.py` - TTS сервер
 
 ## 📊 Моніторинг та діагностика

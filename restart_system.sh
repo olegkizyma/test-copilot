@@ -387,7 +387,7 @@ start_tts_service() {
         log_success "Real TTS started"
     else
         (
-            cd "$REPO_ROOT/frontend_new"
+            cd "$REPO_ROOT/web"
             if [ -f "venv/bin/activate" ]; then
                 source venv/bin/activate
             fi
@@ -409,7 +409,7 @@ start_orchestrator() {
     fi
     
     (
-        cd "$REPO_ROOT/frontend_new/orchestrator"
+        cd "$REPO_ROOT/orchestrator"
         if [ ! -d "node_modules" ]; then
             log_info "Installing Node.js dependencies..."
             npm install
@@ -437,7 +437,7 @@ start_frontend() {
     fi
     
     (
-        cd "$REPO_ROOT/frontend_new"
+        cd "$REPO_ROOT/web"
         if [ -f "venv/bin/activate" ]; then
             source venv/bin/activate
         else
@@ -448,7 +448,7 @@ start_frontend() {
         fi
         
         export ATLAS_TTS_URL="${ATLAS_TTS_URL:-http://127.0.0.1:$TTS_PORT/tts}"
-        python3 app/atlas_server.py > "$LOGS_DIR/frontend.log" 2>&1 &
+        python3 atlas_server.py > "$LOGS_DIR/frontend.log" 2>&1 &
         echo $! > "$LOGS_DIR/frontend.pid"
     )
     
@@ -463,11 +463,11 @@ start_recovery_bridge() {
     fi
     
     (
-        cd "$REPO_ROOT/frontend_new"
-        if [ -f "venv/bin/activate" ]; then
-            source venv/bin/activate
+        cd "$REPO_ROOT/config"
+        if [ -f "../web/venv/bin/activate" ]; then
+            source ../web/venv/bin/activate
         fi
-        python3 config/recovery_bridge.py > "$LOGS_DIR/recovery.log" 2>&1 &
+        python3 recovery_bridge.py > "$LOGS_DIR/recovery.log" 2>&1 &
         echo $! > "$LOGS_DIR/recovery.pid"
     )
     

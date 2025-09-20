@@ -37,12 +37,12 @@ install: install-python install-node
 # Install Python dependencies
 install-python:
 	@echo "🐍 Installing Python dependencies..."
-	@if [ ! -d "frontend_new/venv" ]; then \
+	@if [ ! -d "web/venv" ]; then \
 		echo "Creating Python virtual environment..."; \
-		python3 -m venv frontend_new/venv; \
+		python3 -m venv web/venv; \
 	fi
-	@. frontend_new/venv/bin/activate && pip install -q --upgrade pip
-	@. frontend_new/venv/bin/activate && pip install -q -r requirements-all.txt
+	@. web/venv/bin/activate && pip install -q --upgrade pip
+	@. web/venv/bin/activate && pip install -q -r requirements-all.txt
 	@echo "✅ Python dependencies installed"
 
 # Install Node.js dependencies
@@ -95,7 +95,7 @@ clean:
 # Run tests
 test:
 	@echo "🧪 Running system tests..."
-	@. frontend_new/venv/bin/activate && python -m pytest tests/ -v
+	@. web/venv/bin/activate && python -m pytest tests/ -v
 	@echo "✅ Tests completed"
 
 # Quick start (install + start)
