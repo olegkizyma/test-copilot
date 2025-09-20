@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ATLAS Frontend Test</title>
+</head>
+<body>
+    <h1>ATLAS Frontend Test</h1>
+    
+    <div>
+        <h2>1. TTS Health Check</h2>
+        <button onclick="testTTS()">Test TTS</button>
+        <div id="tts-result"></div>
+    </div>
+    
+    <div>
+        <h2>2. Orchestrator Health Check</h2>
+        <button onclick="testOrchestrator()">Test Orchestrator</button>
+        <div id="orch-result"></div>
+    </div>
+    
+    <div>
+        <h2>3. Config Loading Test</h2>
+        <button onclick="testConfig()">Test Config</button>
+        <div id="config-result"></div>
+    </div>
+
+    <script>
+        async function testTTS() {
+            try {
+                const response = await fetch('http://localhost:3001/health');
+                const data = await response.json();
+                document.getElementById('tts-result').innerHTML = 
+                    `✅ TTS OK: ${JSON.stringify(data)}`;
+            } catch (error) {
+                document.getElementById('tts-result').innerHTML = 
+                    `❌ TTS Error: ${error.message}`;
+            }
+        }
+        
+        async function testOrchestrator() {
+            try {
+                const response = await fetch('http://localhost:5101/health');
+                const data = await response.json();
+                document.getElementById('orch-result').innerHTML = 
+                    `✅ Orchestrator OK: ${JSON.stringify(data)}`;
+            } catch (error) {
+                document.getElementById('orch-result').innerHTML = 
+                    `❌ Orchestrator Error: ${error.message}`;
+            }
+        }
+        
+        async function testConfig() {
+            try {
+                const { AGENTS } = await import('./web/static/js/shared-config.js');
+                document.getElementById('config-result').innerHTML = 
+                    `✅ Config OK: ${Object.keys(AGENTS).length} agents loaded`;
+            } catch (error) {
+                document.getElementById('config-result').innerHTML = 
+                    `❌ Config Error: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+</html>

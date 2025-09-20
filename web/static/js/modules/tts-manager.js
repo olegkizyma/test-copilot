@@ -69,6 +69,8 @@ export class TTSManager {
 
     async playAudio(audioBlob, agent = 'atlas') {
         return new Promise((resolve, reject) => {
+            this.logger.info(`Creating audio URL for ${agent}, blob size: ${audioBlob?.size || 'unknown'}`);
+            
             const audioUrl = URL.createObjectURL(audioBlob);
             const audio = new Audio(audioUrl);
             
@@ -84,15 +86,30 @@ export class TTSManager {
                 
                 resolve();
             };
-
+            
             audio.onerror = (error) => {
                 URL.revokeObjectURL(audioUrl);
                 this.currentAudio = null;
-                this.logger.error(`Audio playback failed for ${agent}`, error);
+                this.logger.error(`Audio playback error for ${agent}:`, error);
                 reject(error);
             };
 
-            audio.play().catch(reject);
+            audio.onloadstart = () => {
+                this.logger.info(`Audio loading started for ${agent}`);
+            };
+
+            audio.oncanplay = () => {
+                this.logger.info(`Audio can play for ${agent}`);
+            };
+
+            // Запускаємо відтворення
+            this.logger.info(`Starting audio playback for ${agent}`);
+            audio.play().catch((playError) => {
+                URL.revokeObjectURL(audioUrl);
+                this.currentAudio = null;
+                this.logger.error(`Audio play failed for ${agent}:`, playError);
+                reject(playError);
+            });
         });
     }
 
@@ -117,21 +134,22 @@ export class TTSManager {
         try {
             this.logger.info(`Speaking for ${agent} (${voice}): ${text.substring(0, 50)}...`);
 
-            // Генеруємо аудіо
-            const ttsData = await this.synthesize(text, voice, { returnAudio: true });
-            
-            // Отримуємо аудіо blob
-            const { data: audioBlob } = await ttsClient.request('/tts', {
+            // Генеруємо аудіо з поверненням blob
+            this.logger.info(`Requesting TTS for ${agent} with return_audio=true`);
+            const response = await ttsClient.request('/tts', {
                 method: 'POST',
                 body: JSON.stringify({
                     text,
                     voice,
                     return_audio: true
-                })
+                }),
+                responseType: 'blob'
             });
 
+            this.logger.info(`Received TTS response, data type: ${typeof response.data}, size: ${response.data?.size || 'unknown'}`);
+            
             // Відтворюємо аудіо
-            await this.playAudio(audioBlob, agent);
+            await this.playAudio(response.data, agent);
 
         } catch (error) {
             this.logger.error(`Speech failed for ${agent}`, error.message);

@@ -3,11 +3,12 @@
  * Кешування для швидшої роботи
  */
 
-const CACHE_NAME = 'atlas-v3.0-modular';
+const CACHE_NAME = 'atlas-v3.1-modular';
 const CACHE_URLS = [
     '/',
     '/static/css/main.css',
     '/static/js/app-refactored.js',
+    '/static/js/shared-config.js',
     '/static/js/core/logger.js',
     '/static/js/core/config.js',
     '/static/js/core/api-client.js',

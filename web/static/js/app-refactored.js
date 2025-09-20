@@ -51,14 +51,14 @@ class AtlasApp {
         
         // Ініціалізуємо Status Manager (якщо потрібен)
         if (document.getElementById('status-container')) {
-            const { default: StatusManager } = await import('./status-manager.js');
-            this.managers.status = new StatusManager();
+            this.logger.info('Status container found - initializing basic status display');
+            this.managers.status = { initialized: true }; // Простий заглушка
         }
         
         // Ініціалізуємо Logger Manager (якщо потрібен)
         if (document.getElementById('logs-container')) {
-            const { default: LoggerManager } = await import('./logger-manager.js');
-            this.managers.logger = new LoggerManager();
+            this.logger.info('Logs container found - initializing basic logs display');
+            this.managers.logger = { initialized: true }; // Простий заглушка
         }
         
         // Робимо менеджери доступними глобально для зворотної сумісності

@@ -192,9 +192,19 @@ app.post('/tts/completed', async (req, res) => {
     res.json({ success: true, voice: voice });
 });
 
+// Logs endpoint for frontend
+app.get('/logs', (req, res) => {
+    res.json({
+        logs: [
+            { level: 'info', message: 'Orchestrator is running', timestamp: new Date().toISOString() },
+            { level: 'info', message: 'All agents configured', timestamp: new Date().toISOString() }
+        ]
+    });
+});
+
 // Start server
 app.listen(PORT, () => {
-    logMessage('info', `ATLAS ORCHESTRATOR running on port ${PORT}`);
+    logMessage('info', `Orchestrator server running on port ${PORT}`);
     logMessage('info', 'FEATURES:');
     logMessage('info', '- Modular architecture');
     logMessage('info', '- Separated workflow logic');

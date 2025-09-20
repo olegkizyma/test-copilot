@@ -26,7 +26,7 @@ export async function sendToTTSAndWait(text, voice = 'dmytro') {
             ttsCompletionEvents.set(voice, resolve);
         });
         
-        // 2. Відправляємо на TTS генерацію
+        // 2. Відправляємо на TTS генерацію (тільки генеруємо, не повертаємо аудіо)
         const response = await axios.post(`${ttsUrl}/tts`, {
             text: text,
             voice: voice,
@@ -38,7 +38,10 @@ export async function sendToTTSAndWait(text, voice = 'dmytro') {
         if (response.data.status === 'success') {
             logMessage('info', `TTS generated for ${voice}, waiting for playback completion event...`);
             
-            // 3. Чекаємо РЕАЛЬНУ подію завершення озвучення
+            // 3. Повідомляємо frontend про необхідність відтворення
+            await notifyFrontendToPlayTTS(text, voice);
+            
+            // 4. Чекаємо РЕАЛЬНУ подію завершення озвучення
             await completionPromise;
             
             logMessage('info', `TTS playback completed for ${voice} (received completion event)`);
@@ -55,6 +58,21 @@ export async function sendToTTSAndWait(text, voice = 'dmytro') {
     }
     
     return false;
+}
+
+// Функція для повідомлення frontend про необхідність відтворення TTS
+async function notifyFrontendToPlayTTS(text, voice) {
+    try {
+        // Можна використати WebSocket або HTTP запит до frontend
+        // Поки що використаємо простий підхід - frontend сам буде запитувати TTS
+        logMessage('info', `Frontend should play TTS for voice: ${voice}, text: ${text.substring(0, 50)}...`);
+        
+        // TODO: Реалізувати WebSocket повідомлення або інший механізм
+        // Поки що frontend має сам відтворювати TTS коли отримує повідомлення від агента
+        
+    } catch (error) {
+        logMessage('warn', `Failed to notify frontend about TTS: ${error.message}`);
+    }
 }
 
 // Функція для отримання події завершення TTS (викликається фронтендом)

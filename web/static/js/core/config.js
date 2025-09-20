@@ -13,7 +13,7 @@ import {
     getAgentByName,
     getWorkflowStage,
     getApiUrl
-} from '../../../../shared-config.js';
+} from '../shared-config.js';
 
 // Експортуємо всі конфігурації зі спільного файлу
 export const AGENTS = SHARED_AGENTS;

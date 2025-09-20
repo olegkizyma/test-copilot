@@ -14,6 +14,7 @@ import json
 import tempfile
 from pathlib import Path
 from flask import Flask, request, jsonify, send_file
+from flask_cors import CORS
 # ukrainian_tts import is done lazily in _init_tts() so we can log environment
 # early and avoid module import-time crashes that prevent useful logs.
 
@@ -45,6 +46,9 @@ class UkrainianTTSServer:
         # Створюємо Flask app
         self.app = Flask(__name__)
         self.app.config['SECRET_KEY'] = 'ukrainian-tts-server-key'
+        
+        # Додаємо CORS для frontend
+        CORS(self.app)
         
         # Log runtime environment to help diagnose venv/import issues
         try:

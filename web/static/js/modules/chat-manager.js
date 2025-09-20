@@ -36,9 +36,12 @@ export class ChatManager {
 
     setupUI() {
         // Знаходимо основні елементи
-        this.chatContainer = document.getElementById('chat-messages');
-        this.inputElement = document.getElementById('user-input');
+        this.chatContainer = document.getElementById('chat-container');
+        this.inputElement = document.getElementById('message-input');
         this.sendButton = document.getElementById('send-button');
+        
+        // Debug: показуємо які елементи знайдені
+        this.logger.info(`UI Elements found: chat-container=${!!this.chatContainer}, message-input=${!!this.inputElement}, send-button=${!!this.sendButton}`);
         
         if (!this.chatContainer || !this.inputElement || !this.sendButton) {
             this.logger.error('Required UI elements not found');

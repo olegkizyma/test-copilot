@@ -48,6 +48,16 @@ def health():
         'port': FRONTEND_PORT
     }
 
+@app.route('/logs')
+def get_logs():
+    """Get system logs - proxy to orchestrator"""
+    try:
+        import requests
+        response = requests.get('http://localhost:5101/logs', timeout=5)
+        return response.json()
+    except Exception:
+        return {'error': 'Failed to get logs', 'logs': []}
+
 if __name__ == '__main__':
     logger.info(f"Starting ATLAS Minimal Frontend Server on port {FRONTEND_PORT}")
     logger.info("Serving static files and 3D model interface")
