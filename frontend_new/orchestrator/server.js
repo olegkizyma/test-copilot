@@ -757,13 +757,8 @@ async function callGooseAgentFixed(message, sessionId, opts = {}) {
     logMessage('info', `Calling Goose for session ${sessionId} - NO SIMULATION FALLBACK [Message length: ${truncatedMessage.length}]`);
     
     try {
-        // Спробуємо HTTP API спочатку, потім WebSocket
-        let result = await callGooseHTTP(gooseBaseUrl, message, sessionId);
-        
-        if (!result || result.trim().length === 0) {
-            // Якщо HTTP не працює, спробуємо WebSocket
-            result = await callGooseWebSocket(gooseBaseUrl, message, sessionId);
-        }
+        // Goose web server підтримує тільки WebSocket, пропускаємо HTTP API
+        let result = await callGooseWebSocket(gooseBaseUrl, message, sessionId);
         
         if (result && result.trim().length > 0) {
             logMessage('info', `Goose execution successful: ${result.length} chars`);
@@ -901,17 +896,9 @@ async function callGooseWebSocket(baseUrl, message, sessionId) {
                     if (obj.type === 'response' && obj.content) {
                         collected += String(obj.content);
                     } else if (obj.type === 'tool_request') {
-                        // Відправляємо відповідь що tool виконано успішно
-                        logMessage('info', `Goose tool request: ${obj.tool_name || 'unknown'} - sending success response...`);
-                        
-                        const toolResponse = {
-                            type: 'tool_response',
-                            tool_call_id: obj.tool_call_id,
-                            content: 'Tool executed successfully. Please continue with text-based response.',
-                            timestamp: Date.now()
-                        };
-                        
-                        ws.send(JSON.stringify(toolResponse));
+                        // Логуємо tool request, але НЕ відправляємо фейкову відповідь
+                        logMessage('info', `Goose tool request: ${obj.tool_name || obj.name || 'unknown'} - allowing natural execution`);
+                        // Дозволяємо Goose обробити tool самостійно, не втручаємося
                     } else if (obj.type === 'complete' || obj.type === 'cancelled') {
                         logMessage('info', `Goose completed for session: ${sessionId}, collected: ${collected.length} chars`);
                         clearTimeout(timeout);

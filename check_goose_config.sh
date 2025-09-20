@@ -43,13 +43,15 @@ print_header() {
 
 print_header
 
-# 1. Перевірка Goose Desktop
-log_info "Перевірка Goose Desktop..."
-if [ -d "/Applications/Goose.app" ]; then
+# 1. Перевірка Goose CLI
+log_info "Перевірка Goose CLI..."
+if [ -x "/opt/homebrew/bin/goose" ]; then
+    log_success "Goose CLI встановлений (Homebrew)"
+elif [ -d "/Applications/Goose.app" ]; then
     log_success "Goose Desktop встановлений"
 else
-    log_error "Goose Desktop не знайдено"
-    echo "Встановіть через: brew install --cask block-goose"
+    log_error "Goose не знайдено"
+    echo "Встановіть через: brew install block-goose-cli"
 fi
 
 # 2. Перевірка процесів Goose

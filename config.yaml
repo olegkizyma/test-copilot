@@ -22,7 +22,7 @@ ports:
 
 # Конфігурація Goose
 goose:
-  desktop_path: "/Applications/Goose.app/Contents/MacOS/goose"
+  desktop_path: "/opt/homebrew/bin/goose"
   use_desktop: true
   server_port: 3000
   websocket_timeout: 120    # секунд
@@ -105,7 +105,7 @@ security:
 fallback:
   enabled: false            # Локальний fallback LLM
   port: 3010
-  model: "llama2"
+  model: "openai/gpt-4o"
 
 # Моніторинг та діагностика
 monitoring:

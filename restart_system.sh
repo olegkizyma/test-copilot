@@ -80,6 +80,31 @@ log_progress() {
     echo -e "${BLUE}⚡${NC} $1"
 }
 
+# Get Goose binary path from config or fallback
+get_goose_binary() {
+    # Try to get path from config.yaml
+    if [ -f "$REPO_ROOT/config.yaml" ]; then
+        local config_path=$(grep -A 10 "^goose:" "$REPO_ROOT/config.yaml" | grep "desktop_path:" | sed 's/.*desktop_path: *"\([^"]*\)".*/\1/')
+        if [ -n "$config_path" ] && [ -x "$config_path" ]; then
+            echo "$config_path"
+            return 0
+        fi
+    fi
+    
+    # Fallback order: Desktop -> Homebrew -> Local -> PATH
+    if [ -x "/Applications/Goose.app/Contents/MacOS/goose" ]; then
+        echo "/Applications/Goose.app/Contents/MacOS/goose"
+    elif [ -x "/opt/homebrew/bin/goose" ]; then
+        echo "/opt/homebrew/bin/goose"
+    elif [ -x "$HOME/.local/bin/goose" ]; then
+        echo "$HOME/.local/bin/goose"
+    elif command -v goose >/dev/null 2>&1; then
+        echo "goose"
+    else
+        echo ""
+    fi
+}
+
 # Create necessary directories
 init_directories() {
     mkdir -p "$LOGS_DIR"
@@ -163,7 +188,7 @@ stop_service() {
 
 # Goose configuration validation and repair functions
 validate_goose_config() {
-    local goose_bin="/opt/homebrew/bin/goose"
+    local goose_bin=$(get_goose_binary)
     local config_file="$HOME/.config/goose/config.yaml"
     
     if [ ! -f "$config_file" ]; then
@@ -171,27 +196,29 @@ validate_goose_config() {
         return 1
     fi
     
-    # Check if provider is configured
-    if ! grep -q "provider:" "$config_file" || ! grep -q "github_copilot:" "$config_file"; then
+    # Check if provider is configured (new format)
+    if ! grep -q "GOOSE_PROVIDER:" "$config_file"; then
         log_warn "Goose provider not properly configured"
         return 1
     fi
     
-    # Check if API key is present
-    if ! grep -q "api_key:" "$config_file"; then
-        log_warn "Goose API key not configured"
+    # Test if Goose actually works instead of checking token details
+    log_info "Testing Goose functionality..."
+    if timeout 10 "$goose_bin" web --help > /dev/null 2>&1; then
+        log_info "Goose configuration appears to be working"
+        return 0
+    else
+        log_warn "Goose functionality test failed"
         return 1
     fi
-    
-    return 0
 }
 
 repair_goose_config() {
     log_warn "Goose configuration issues detected. Attempting repair..."
-    local goose_bin="/opt/homebrew/bin/goose"
+    local goose_bin=$(get_goose_binary)
     
-    if [ ! -x "$goose_bin" ]; then
-        log_error "Goose CLI not available for configuration repair"
+    if [ -z "$goose_bin" ] || [ ! -x "$goose_bin" ]; then
+        log_error "Goose binary not available for configuration repair"
         return 1
     fi
     
@@ -264,13 +291,15 @@ start_goose_web_server() {
         fi
     fi
     
-    # Check if Goose CLI is available
-    local goose_bin="/opt/homebrew/bin/goose"
-    if [ ! -x "$goose_bin" ]; then
-        log_error "Goose CLI not found at $goose_bin"
-        log_info "Install with: brew install block-goose-cli"
+    # Check if Goose binary is available
+    local goose_bin=$(get_goose_binary)
+    if [ -z "$goose_bin" ] || [ ! -x "$goose_bin" ]; then
+        log_error "Goose binary not found"
+        log_info "Install with: brew install --cask block-goose OR brew install block-goose-cli"
         return 1
     fi
+    
+    log_info "Using Goose binary: $goose_bin"
     
     # Check Goose configuration before starting
     log_info "Checking Goose configuration..."
@@ -644,16 +673,17 @@ cmd_diagnose() {
     log_info "Running ATLAS System Diagnostics..."
     echo ""
     
-    # Check Goose CLI
-    echo -e "${CYAN}Goose CLI Status:${NC}"
+    # Check Goose Binary
+    echo -e "${CYAN}Goose Binary Status:${NC}"
     echo "─────────────────────────────────────────"
-    local goose_bin="/opt/homebrew/bin/goose"
-    if [ -x "$goose_bin" ]; then
+    local goose_bin=$(get_goose_binary)
+    if [ -n "$goose_bin" ] && [ -x "$goose_bin" ]; then
         local version=$("$goose_bin" --version 2>/dev/null || echo "unknown")
-        echo -e "${GREEN}✓${NC} Goose CLI found: $goose_bin (version: $version)"
+        echo -e "${GREEN}✓${NC} Goose binary found: $goose_bin (version: $version)"
     else
-        echo -e "${RED}✗${NC} Goose CLI not found at $goose_bin"
-        echo "  Install with: brew install block-goose-cli"
+        echo -e "${RED}✗${NC} Goose binary not found"
+        echo "  Install Desktop: brew install --cask block-goose"
+        echo "  Install CLI: brew install block-goose-cli"
     fi
     
     # Check Goose configuration

@@ -132,16 +132,19 @@ fi
 echo ""
 echo "🦆 Checking Goose installation..."
 
-# Check for Goose Desktop
-if [ -x "/Applications/Goose.app/Contents/MacOS/goose" ]; then
+# Check for Goose installations
+if [ -x "/opt/homebrew/bin/goose" ]; then
+    echo "✅ Goose CLI is installed (Homebrew)"
+elif [ -x "/Applications/Goose.app/Contents/MacOS/goose" ]; then
     echo "✅ Goose Desktop is installed"
 elif [ -x "$HOME/.local/bin/goose" ]; then
-    echo "✅ Goose CLI is installed"
+    echo "✅ Goose CLI is installed (Local)"
 elif command -v goose >/dev/null 2>&1; then
     echo "✅ Goose is available in PATH"
 else
-    echo "⚠️  Goose not found. Please install Goose Desktop or run:"
-    echo "   curl -fsSL https://goose.build/install.sh | sh"
+    echo "⚠️  Goose not found. Please install with:"
+    echo "   brew install block-goose-cli"
+    echo "   OR curl -fsSL https://goose.build/install.sh | sh"
 fi
 
 echo ""
@@ -180,7 +183,7 @@ echo "3. For GitHub Copilot, you may need device authentication:"
 echo "   Visit: https://github.com/login/device"
 echo ""
 echo "4. Environment variables (optional):"
-echo "   export GOOSE_DESKTOP_PATH=/Applications/Goose.app/Contents/MacOS/goose"
+echo "   export GOOSE_DESKTOP_PATH=/opt/homebrew/bin/goose"
 echo "   export REAL_TTS_MODE=true"
 echo "   export TTS_DEVICE=mps"
 echo ""
