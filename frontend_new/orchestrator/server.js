@@ -558,7 +558,8 @@ async function executeAgentStageStepByStep(agentName, stageName, systemPrompt, u
         // Спроба через Goose з правильним промптом
         const fullPrompt = `${systemPrompt}\n\nUser Request: ${userPrompt}`;
         const gooseText = await callGooseAgentFixed(fullPrompt, session.id, {
-            enableTools: options.enableTools === true // Передаємо налаштування з options
+            enableTools: options.enableTools === true, // Передаємо налаштування з options
+            agent: agentName // Передаємо ім'я агента для правильного налаштування tools
         });
         
         if (gooseText && gooseText.trim().length > 0) {
@@ -630,7 +631,8 @@ async function executeAgentStage(agentName, stageName, systemPrompt, userPrompt,
         // Спроба через Goose з правильним промптом
         const fullPrompt = `${systemPrompt}\n\nUser Request: ${userPrompt}`;
         const gooseText = await callGooseAgentFixed(fullPrompt, session.id, {
-            enableTools: options.enableTools === true // Передаємо налаштування з options
+            enableTools: options.enableTools === true, // Передаємо налаштування з options
+            agent: agentName // Передаємо ім'я агента для правильного налаштування tools
         });
         
         if (gooseText && gooseText.trim().length > 0) {
@@ -744,10 +746,21 @@ async function detectGoosePort() {
 async function callGooseAgentFixed(prompt, baseSessionId, options = {}) {
     // Створюємо унікальну сесію для кожного виклику щоб уникнути конфліктів tool_calls
     const sessionId = `${baseSessionId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Відключаємо tools ТІЛЬКИ для Atlas (координатор не потребує інструментів)
+    // Тетяна і Гриша мають ПОВНИЙ доступ до реальних інструментів!
+    let enhancedPrompt = prompt;
+    if (options.agent === 'atlas') {
+        enhancedPrompt = `ВАЖЛИВО: Відповідай ТІЛЬКИ текстом. НЕ використовуй жодних інструментів або tools. Дай повну текстову відповідь для координації.
+
+${prompt}`;
+    }
+    // Для Тетяни і Гріші - БЕЗ обмежень, повний доступ до tools!
+    
     // Обмежуємо довжину повідомлення до 4000 символів для кращої роботи з tools
-    const truncatedMessage = prompt.length > 4000 
-        ? prompt.slice(0, 3997) + "..."
-        : prompt;
+    const truncatedMessage = enhancedPrompt.length > 4000 
+        ? enhancedPrompt.slice(0, 3997) + "..."
+        : enhancedPrompt;
     
     // Автоматично виявляємо порт Goose або використовуємо змінну середовища
     let goosePort = process.env.GOOSE_PORT;
@@ -875,10 +888,16 @@ async function callGooseWebSocket(baseUrl, message, sessionId) {
             
             ws.on('open', () => {
                 logMessage('info', `WebSocket connected to Goose for session: ${sessionId}`);
-                // Обмежуємо довжину повідомлення до 2000 символів
-                const truncatedMessage = message.length > 2000 
-                    ? message.slice(0, 1997) + "..."
+                // Обмежуємо довжину повідомлення до 4000 символів для кращої роботи з tools
+                let truncatedMessage = message.length > 4000 
+                    ? message.slice(0, 3997) + "..."
                     : message;
+
+                // Виправляємо повідомлення: замінюємо 'tool' на 'tool_calls' для сумісності з API
+                if (truncatedMessage.includes('"role": "tool"')) {
+                    truncatedMessage = truncatedMessage.replace(/"role": "tool"/g, '"role": "tool_calls"');
+                    logMessage('info', 'Fixed message: replaced role "tool" with "tool_calls"');
+                }
 
                 const payload = {
                     type: 'message',
@@ -902,15 +921,11 @@ async function callGooseWebSocket(baseUrl, message, sessionId) {
                         logMessage('info', `Goose tool request: ${obj.tool_name || obj.name || 'unknown'}`);
                         logMessage('info', `Tool request structure: ${JSON.stringify(obj, null, 2)}`);
                         
-                        // Відправляємо фейкову tool response щоб задовольнити API вимоги
-                        const toolCallId = obj.tool_call_id || obj.id || obj.call_id || 'fake_id';
-                        const toolResponse = {
-                            type: 'tool_response',
-                            tool_call_id: toolCallId,
-                            content: 'Tool executed successfully'
-                        };
-                        logMessage('info', `Sending tool response with ID: ${toolCallId}`);
-                        ws.send(JSON.stringify(toolResponse));
+                        // ДОЗВОЛЯЄМО GOOSE РЕАЛЬНО ВИКОНУВАТИ TOOLS!
+                        // Не втручаємося в процес - дозволяємо Goose обробити tool_request самостійно
+                        logMessage('info', `Allowing Goose to handle tool request: ${obj.tool_call_id || obj.id || obj.call_id || 'unknown'}`);
+                        
+                        // НЕ відправляємо fake response - дозволяємо Goose працювати з реальними інструментами
                     } else if (obj.type === 'complete' || obj.type === 'cancelled') {
                         logMessage('info', `Goose completed for session: ${sessionId}, collected: ${collected.length} chars`);
                         clearTimeout(timeout);
