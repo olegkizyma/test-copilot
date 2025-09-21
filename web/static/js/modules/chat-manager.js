@@ -31,6 +31,9 @@ export class ChatManager {
         this.setupUI();
         this.setupEventListeners();
         
+        // Запускаємо polling для TTS запитів
+        this.startTTSPolling();
+        
         this.logger.info('Chat Manager initialized');
     }
 
@@ -188,7 +191,7 @@ export class ChatManager {
     async streamFromOrchestrator(message) {
         this.logger.info(`Streaming message to orchestrator: ${message.substring(0, 50)}...`);
 
-        const sessionId = this.generateSessionId();
+        const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         this.currentSession = sessionId;
 
         return new Promise((resolve, reject) => {
@@ -240,20 +243,9 @@ export class ChatManager {
         // Додаємо повідомлення в чат
         const message = this.addMessage(content, agent);
 
-        // Озвучуємо тільки фінальні або виконавчі повідомлення
-        const shouldSpeak = voice && this.ttsManager.isEnabled() && 
-                           (!messageType || messageType === 'final' || messageType === 'execution');
+        // НЕ озвучуємо автоматично - чекаємо на спеціальний TTS запит від orchestrator'а
+        // TTS буде оброблено окремо через polling механізм
         
-        if (shouldSpeak) {
-            try {
-                await this.ttsManager.speak(content, agent);
-            } catch (error) {
-                this.logger.warn(`TTS failed for ${agent}`, error.message);
-            }
-        } else if (messageType === 'planning') {
-            this.logger.debug(`Skipping TTS for ${agent} planning message`);
-        }
-
         return message;
     }
 
@@ -299,8 +291,37 @@ export class ChatManager {
         }
     }
 
-    generateSessionId() {
-        return `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    startTTSPolling() {
+        // Перевіряємо наявність TTS запитів кожні 500мс
+        this.ttsPollingInterval = setInterval(async () => {
+            try {
+                await this.checkPendingTTS();
+            } catch (error) {
+                this.logger.debug('TTS polling error:', error.message);
+            }
+        }, 500);
+        
+        this.logger.info('TTS polling started');
+    }
+
+    async checkPendingTTS() {
+        try {
+            const response = await orchestratorClient.get('/tts/pending');
+            
+            if (response.data && response.data.has_pending && response.data.request) {
+                const { text, voice, id } = response.data.request;
+                
+                this.logger.info(`Processing pending TTS: voice=${voice}, id=${id}`);
+                
+                // Озвучуємо текст з правильним voice
+                await this.ttsManager.speak(text, voice, { voice: voice });
+                
+                this.logger.info(`TTS completed for request: ${id}`);
+            }
+        } catch (error) {
+            // Тиха помилка, щоб не засмічувати логи
+            this.logger.debug('Failed to check pending TTS:', error.message);
+        }
     }
 
     // Методи для управління TTS
@@ -332,25 +353,4 @@ export class ChatManager {
         this.logger.info('Chat cleared');
     }
 
-    // Експорт історії чату
-    exportChatHistory() {
-        const history = {
-            timestamp: new Date().toISOString(),
-            messages: this.messages,
-            session: this.currentSession
-        };
-        
-        const blob = new Blob([JSON.stringify(history, null, 2)], {
-            type: 'application/json'
-        });
-        
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `atlas-chat-${Date.now()}.json`;
-        a.click();
-        
-        URL.revokeObjectURL(url);
-        this.logger.info('Chat history exported');
-    }
 }

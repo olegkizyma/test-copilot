@@ -9,7 +9,7 @@ import os
 import logging
 from datetime import datetime
 from pathlib import Path
-from flask import Flask, render_template
+from flask import Flask, render_template, request
 
 # Setup logging
 logging.basicConfig(
@@ -48,15 +48,31 @@ def health():
         'port': FRONTEND_PORT
     }
 
-@app.route('/logs')
-def get_logs():
-    """Get system logs - proxy to orchestrator"""
+@app.route('/tts/play', methods=['POST'])
+def play_tts():
+    """Receive TTS play request from orchestrator"""
     try:
-        import requests
-        response = requests.get('http://localhost:5101/logs', timeout=5)
-        return response.json()
-    except Exception:
-        return {'error': 'Failed to get logs', 'logs': []}
+        data = request.get_json()
+        if not data or 'text' not in data or 'voice' not in data:
+            return {'error': 'Missing text or voice parameter'}, 400
+            
+        text = data['text']
+        voice = data['voice']
+        
+        logger.info(f"Received TTS play request: voice={voice}, text={text[:50]}...")
+        
+        # Здесь можно добавить логику для помещения в очередь TTS
+        # Но пока просто возвращаем успех
+        
+        return {
+            'status': 'accepted',
+            'voice': voice,
+            'text_length': len(text),
+            'timestamp': datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"TTS play request failed: {e}")
+        return {'error': str(e)}, 500
 
 if __name__ == '__main__':
     logger.info(f"Starting ATLAS Minimal Frontend Server on port {FRONTEND_PORT}")

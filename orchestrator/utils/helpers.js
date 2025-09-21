@@ -63,15 +63,20 @@ export async function sendToTTSAndWait(text, voice = 'dmytro') {
 // Функція для повідомлення frontend про необхідність відтворення TTS
 async function notifyFrontendToPlayTTS(text, voice) {
     try {
-        // Можна використати WebSocket або HTTP запит до frontend
-        // Поки що використаємо простий підхід - frontend сам буде запитувати TTS
-        logMessage('info', `Frontend should play TTS for voice: ${voice}, text: ${text.substring(0, 50)}...`);
+        // Використовуємо глобальну змінну для зберігання поточного TTS запиту
+        // Frontend буде опитувати цей endpoint для отримання TTS запитів
+        global.pendingTTSRequest = {
+            text: text,
+            voice: voice,
+            timestamp: Date.now(),
+            id: `tts_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+        };
         
-        // TODO: Реалізувати WebSocket повідомлення або інший механізм
-        // Поки що frontend має сам відтворювати TTS коли отримує повідомлення від агента
-        
+        logMessage('info', `TTS request queued for frontend: voice=${voice}, id=${global.pendingTTSRequest.id}`);
+        return true;
     } catch (error) {
-        logMessage('warn', `Failed to notify frontend about TTS: ${error.message}`);
+        logMessage('warn', `Failed to queue TTS request: ${error.message}`);
+        return false;
     }
 }
 

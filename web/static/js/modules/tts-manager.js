@@ -116,7 +116,9 @@ export class TTSManager {
 
     async notifyPlaybackCompleted(agent) {
         try {
-            const voice = AGENTS[agent]?.voice || agent;
+            // Якщо agent є голосом (string), використовуємо його напряму
+            // Якщо agent є ім'ям агента, отримуємо voice з конфігурації
+            const voice = (typeof agent === 'string' && !AGENTS[agent]) ? agent : (AGENTS[agent]?.voice || agent || TTS_CONFIG.defaultVoice);
             await orchestratorClient.post('/tts/completed', { voice });
             this.logger.info(`Notified orchestrator: TTS completed for ${agent} (voice: ${voice})`);
         } catch (error) {
@@ -149,14 +151,14 @@ export class TTSManager {
 
             this.logger.info(`Received TTS response, data type: ${typeof response.data}, size: ${response.data?.size || 'unknown'}`);
             
-            // Відтворюємо аудіо
-            await this.playAudio(response.data, agent);
+            // Відтворюємо аудіо з правильним voice для повідомлення
+            await this.playAudio(response.data, voice);
 
         } catch (error) {
             this.logger.error(`Speech failed for ${agent}`, error.message);
             
             // Fallback - сповіщаємо про "завершення" навіть при помилці
-            this.notifyPlaybackCompleted(agent);
+            this.notifyPlaybackCompleted(voice);
             
             throw error;
         }

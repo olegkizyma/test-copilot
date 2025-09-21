@@ -176,6 +176,24 @@ app.post('/chat/confirm', async (req, res) => {
     res.json({ success: true, confirmed: messageId });
 });
 
+// Endpoint для отримання поточного TTS запиту
+app.get('/tts/pending', (req, res) => {
+    const pendingRequest = global.pendingTTSRequest;
+    
+    if (pendingRequest) {
+        // Очищаємо після відправки
+        global.pendingTTSRequest = null;
+        res.json({
+            has_pending: true,
+            request: pendingRequest
+        });
+    } else {
+        res.json({
+            has_pending: false
+        });
+    }
+});
+
 // Endpoint для отримання події завершення TTS від фронтенду
 app.post('/tts/completed', async (req, res) => {
     const { voice } = req.body;
@@ -190,16 +208,6 @@ app.post('/tts/completed', async (req, res) => {
     
     logMessage('info', `[TTS] Received completion event for voice: ${voice}`);
     res.json({ success: true, voice: voice });
-});
-
-// Logs endpoint for frontend
-app.get('/logs', (req, res) => {
-    res.json({
-        logs: [
-            { level: 'info', message: 'Orchestrator is running', timestamp: new Date().toISOString() },
-            { level: 'info', message: 'All agents configured', timestamp: new Date().toISOString() }
-        ]
-    });
 });
 
 // Start server
