@@ -172,16 +172,20 @@ async function callGooseWebSocket(baseUrl, message, sessionId) {
                         console.log(`[GOOSE] Tool request structure: ${JSON.stringify(obj, null, 2)}`);
                         
                         // Перевіряємо, доступний ли інструмент
-                        const availableExtensions = ['computercontroller', 'memory', 'developer', 'autovisualiser', 'playwright'];
-                        const isToolAvailable = availableExtensions.some(ext => obj.tool_name?.includes(ext));
+                        const availableExtensions = ['computercontroller', 'memory', 'developer', 'playwright', 'vscode'];
+                        const isToolAvailable = availableExtensions.some(ext => obj.tool_name?.includes(ext)) || 
+                                               obj.tool_name?.startsWith('browser_') || 
+                                               obj.tool_name?.startsWith('playwright__') ||
+                                               obj.tool_name?.startsWith('vscode__') ||
+                                               obj.tool_name === 'computercontroller__computer_control';
 
-                        if (!isToolAvailable && obj.tool_name !== 'computercontroller__computer_control') {
+                        if (!isToolAvailable) {
                             console.warn(`[GOOSE] Tool ${obj.tool_name} is not available in current extensions configuration`);
                             // Відправляємо fake response для невідомих інструментів
                             const toolResponse = {
                                 type: 'tool_response',
                                 tool_call_id: obj.tool_call_id || obj.id || `fake_${Date.now()}`,
-                                content: `Tool ${obj.tool_name} is not available. Please use available extensions: ${availableExtensions.join(', ')}`,
+                                content: `Tool ${obj.tool_name} is not available. Available: computercontroller, developer, playwright browser tools.`,
                                 success: false
                             };
                             ws.send(JSON.stringify(toolResponse));
