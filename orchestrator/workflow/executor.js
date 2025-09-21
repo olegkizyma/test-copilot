@@ -360,7 +360,8 @@ export async function executeAgentStageStepByStep(agentName, stageName, systemPr
         voice: agent.voice || 'default', // Добавлено поле voice
         color: agent.color,
         provider,
-        stepByStep: true
+        stepByStep: true,
+        messageType: agentName === 'tetyana' ? 'execution' : 'final' // Фильтр для TTS
     };
     
     // ВІДПРАВЛЯЄМО ПОВІДОМЛЕННЯ ФРОНТЕНДУ

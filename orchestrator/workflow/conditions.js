@@ -15,8 +15,25 @@ export const WORKFLOW_CONDITIONS = {
 
     async atlas_provided_clarification(data) {
         if (!data?.response?.content || data.response.agent !== 'atlas') return false;
+
+        // Проверяем, действительно ли Atlas предоставил уточнения
+        const content = data.response.content.toLowerCase();
+        const hasClarificationKeywords = content.includes('уточнення') ||
+                                       content.includes('пояснення') ||
+                                       content.includes('виправлення') ||
+                                       content.includes('зміни') ||
+                                       content.includes('correction') ||
+                                       content.includes('clarification');
+
+        if (!hasClarificationKeywords) {
+            console.log(`[WORKFLOW] Atlas response doesn't contain clarification keywords: ${content.substring(0, 100)}...`);
+            return false;
+        }
+
         const aiAnalysis = await analyzeAgentResponse('atlas', data.response.content, 'clarification');
-        return aiAnalysis.predicted_state === 'clarified' && aiAnalysis.confidence > 0.6;
+        const result = aiAnalysis.predicted_state === 'clarified' && aiAnalysis.confidence > 0.7;
+        console.log(`[WORKFLOW] Atlas clarification check: ${result} (confidence: ${aiAnalysis.confidence})`);
+        return result;
     },
 
     async tetyana_still_blocked(data) {

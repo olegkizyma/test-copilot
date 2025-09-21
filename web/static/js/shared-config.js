@@ -32,7 +32,7 @@ export const AGENTS = {
         model: 'github-copilot',
         signature: '[ГРИША]', 
         color: '#ffff00',
-        voice: 'mykyta',
+        voice: 'oleksa',  // Изменено с 'mykyta' на 'oleksa' для стабильности
         priority: 3,
         description: 'Верифікатор результатів та фінальний виконавець',
         enableTools: true

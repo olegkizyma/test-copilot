@@ -235,18 +235,23 @@ export class ChatManager {
     }
 
     async handleAgentMessage(messageData) {
-        const { content, agent, voice } = messageData;
+        const { content, agent, voice, messageType } = messageData;
         
         // Додаємо повідомлення в чат
         const message = this.addMessage(content, agent);
 
-        // Озвучуємо якщо потрібно
-        if (voice && this.ttsManager.isEnabled()) {
+        // Озвучуємо тільки фінальні або виконавчі повідомлення
+        const shouldSpeak = voice && this.ttsManager.isEnabled() && 
+                           (!messageType || messageType === 'final' || messageType === 'execution');
+        
+        if (shouldSpeak) {
             try {
                 await this.ttsManager.speak(content, agent);
             } catch (error) {
                 this.logger.warn(`TTS failed for ${agent}`, error.message);
             }
+        } else if (messageType === 'planning') {
+            this.logger.debug(`Skipping TTS for ${agent} planning message`);
         }
 
         return message;
