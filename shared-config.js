@@ -21,7 +21,7 @@ export const AGENTS = {
         model: 'github-copilot',
         signature: '[ТЕТЯНА]',
         color: '#00ffff',
-        voice: 'tetiana',
+        voice: 'lada',  // Изменено с 'tetiana' на 'lada' для стабильности
         priority: 2,
         description: 'Основний виконавець завдань',
         enableTools: true

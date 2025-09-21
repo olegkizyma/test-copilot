@@ -357,7 +357,7 @@ export async function executeAgentStageStepByStep(agentName, stageName, systemPr
         stage: stageName,
         messageId,
         timestamp: Date.now(),
-        voice: agent.voice,
+        voice: agent.voice || 'default', // Добавлено поле voice
         color: agent.color,
         provider,
         stepByStep: true

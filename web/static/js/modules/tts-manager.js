@@ -21,12 +21,13 @@ export class TTSManager {
 
     async init() {
         try {
-            // Перевіряємо доступність TTS сервісу
+            this.logger.debug('Initializing TTSManager...');
             const { data } = await ttsClient.get('/health');
-            this.enabled = data.status === 'running' || data.available === true;
+            this.logger.debug('TTS health check response:', data);
+            this.enabled = data.status === 'ok' && data.tts_ready === true;
             this.logger.info(`TTS service ${this.enabled ? 'available' : 'unavailable'}`);
         } catch (error) {
-            this.logger.warn(`TTS service unavailable: ${error.message}`);
+            this.logger.error('TTS service initialization failed:', error.message);
             this.enabled = false;
         }
     }
