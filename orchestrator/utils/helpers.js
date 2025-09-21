@@ -32,7 +32,7 @@ export async function sendToTTSAndWait(text, voice = 'dmytro') {
             voice: voice,
             return_audio: false
         }, {
-            timeout: 30000
+            timeout: 60000
         });
         
         if (response.data.status === 'success') {
@@ -98,7 +98,7 @@ export async function waitForTTSCompletion(text, voice) {
             voice: voice || 'dmytro',
             wait_for_completion: true
         }, {
-            timeout: 30000 // 30 секунд максимум
+            timeout: 60000 // 60 секунд максимум
         });
         
         if (ttsResponse.data && ttsResponse.data.status === 'completed') {

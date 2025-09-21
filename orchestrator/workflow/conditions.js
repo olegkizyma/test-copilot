@@ -85,8 +85,32 @@ export const WORKFLOW_CONDITIONS = {
         const currentCycle = session.retryCycle || 0;
         if (currentCycle >= 2) return false; // Максимум 3 цикли (0, 1, 2)
         
-        // Перевіряємо чи верифікація не пройшла
+        // Перевіряємо чи верифікація не пройшла - прямий аналіз відповіді Гріши
         const lastGrishaResponse = session.history?.filter(r => r.agent === 'grisha').pop();
+        if (lastGrishaResponse && lastGrishaResponse.content) {
+            const content = lastGrishaResponse.content.toLowerCase();
+            
+            // Прямі індикатори того, що потрібен новий круг
+            const retryIndicators = [
+                'завдання не виконано',
+                'потрібен новий круг',
+                'завдання виконано частково',
+                'потрібно доробити',
+                'не підтверджую',
+                'відхилено',
+                'знайдено помилки',
+                'є проблеми'
+            ];
+            
+            const needsRetry = retryIndicators.some(indicator => content.includes(indicator));
+            
+            if (needsRetry) {
+                console.log(`[WORKFLOW] Grisha indicated retry needed: ${lastGrishaResponse.content.substring(0, 100)}...`);
+                return true;
+            }
+        }
+        
+        // Fallback до AI аналізу якщо прямий аналіз не спрацював
         if (lastGrishaResponse) {
             return await this.verification_failed({ response: lastGrishaResponse, session });
         }
