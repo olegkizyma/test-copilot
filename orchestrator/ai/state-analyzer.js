@@ -6,13 +6,31 @@
 import axios from 'axios';
 import { STATE_ANALYSIS_PROMPTS, FALLBACK_ANALYSIS_RULES, DEFAULT_STATES } from '../../prompts/system/state_analysis_prompts.js';
 
+// Імпортуємо централізовані модулі
+const stateManager = require('../state/state-manager');
+const logger = require('../utils/logger');
+
 // Функція для аналізу відповіді агента за допомогою AI
 export async function analyzeAgentResponse(agent, response, stage) {
-    console.log(`[AI ANALYZER] Analyzing ${agent} response for stage: ${stage}`);
+    logger.info(`[AI ANALYZER] Analyzing ${agent} response for stage: ${stage}`);
+    
+    // Отримуємо поточний стан з централізованого менеджера
+    const currentState = stateManager.getCurrentState();
     
     // Перевіряємо чи response не undefined
     if (!response || response === 'undefined' || typeof response !== 'string') {
-        console.warn(`[AI Analysis] Invalid response for ${agent}/${stage}:`, response);
+        logger.warn(`[AI Analysis] Invalid response for ${agent}/${stage}:`, response);
+        
+        // Оновлюємо стан з результатами аналізу
+        stateManager.updateState({
+            analysisResults: {
+                predicted_state: getDefaultState(stage),
+                confidence: 0.1,
+                agent,
+                stage
+            }
+        });
+        
         return {
             predicted_state: getDefaultState(stage),
             confidence: 0.1
@@ -80,7 +98,18 @@ ANALYZE NOW:`;
             try {
                 const result = JSON.parse(content);
                 if (result.predicted_state && typeof result.confidence === 'number') {
-                    console.log(`[AI Analysis] Success: ${agent}/${stage} -> ${result.predicted_state} (${result.confidence})`);
+                    logger.info(`[AI Analysis] Success: ${agent}/${stage} -> ${result.predicted_state} (${result.confidence})`);
+                    
+                    // Оновлюємо стан після успішного аналізу
+                    stateManager.updateState({
+                        analysisResults: {
+                            ...result,
+                            agent,
+                            stage,
+                            timestamp: new Date().toISOString()
+                        }
+                    });
+                    
                     return result;
                 }
             } catch (parseError) {
@@ -89,13 +118,40 @@ ANALYZE NOW:`;
         }
         
         // Fallback до локального аналізу
-        console.warn(`[AI Analysis] Invalid AI response, using fallback for ${agent}/${stage}`);
-        return localFallbackAnalysis(stage, response);
+        logger.warn(`[AI Analysis] Invalid AI response, using fallback for ${agent}/${stage}`);
+        const fallbackResult = localFallbackAnalysis(stage, response);
+        
+        // Оновлюємо стан з результатами fallback аналізу
+        stateManager.updateState({
+            analysisResults: {
+                ...fallbackResult,
+                agent,
+                stage,
+                isFallback: true,
+                timestamp: new Date().toISOString()
+            }
+        });
+        
+        return fallbackResult;
         
     } catch (error) {
-        console.error('AI Model Error:', error.message);
+        logger.error('AI Model Error:', error.message);
         // Fallback для локального аналізу
-        return localFallbackAnalysis(stage, response);
+        const fallbackResult = localFallbackAnalysis(stage, response);
+        
+        // Оновлюємо стан з результатами fallback аналізу
+        stateManager.updateState({
+            analysisResults: {
+                ...fallbackResult,
+                agent,
+                stage,
+                isFallback: true,
+                error: error.message,
+                timestamp: new Date().toISOString()
+            }
+        });
+        
+        return fallbackResult;
     }
 }
 

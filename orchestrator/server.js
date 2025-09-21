@@ -13,6 +13,12 @@ import { executeStepByStepWorkflow } from './workflow/executor.js';
 import { chatCompletion, getAvailableModels } from './ai/fallback-llm.js';
 import { logMessage } from './utils/helpers.js';
 
+// Нові централізовані модулі
+const logger = require('./utils/logger');
+const errorHandler = require('./errors/error-handler');
+const telemetry = require('./utils/telemetry');
+const healthMonitor = require('./monitoring/health-monitor');
+
 const app = express();
 const PORT = process.env.ORCH_PORT || 5101;
 
@@ -22,6 +28,39 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Secret-Key']
 }));
 app.use(express.json({ limit: '10mb' }));
+
+// Додання middleware для логування запитів
+app.use((req, res, next) => {
+  const start = Date.now();
+  
+  // Логування вхідного запиту
+  logger.info(`${req.method} ${req.url}`, {
+    headers: req.headers,
+    query: req.query,
+    ip: req.ip
+  });
+  
+  // Перехоплюємо завершення відповіді
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    const status = res.statusCode;
+    
+    // Логуємо інформацію про запит
+    logger.info(`${req.method} ${req.url} ${status}`, {
+      duration: `${duration}ms`,
+      contentLength: res.get('Content-Length') || 0
+    });
+    
+    // Записуємо метрику
+    telemetry.recordExecution('http_request', duration, status < 400, {
+      method: req.method,
+      path: req.url,
+      status
+    });
+  });
+  
+  next();
+});
 
 // Session management
 const sessions = new Map();
@@ -39,14 +78,20 @@ setInterval(() => {
     }
 }, 5 * 60 * 1000); // Перевірка кожні 5 хвилин
 
-// Health check
+// Health check з інтеграцією health monitor
 app.get('/health', (req, res) => {
-    res.json({ 
-        status: 'ok', 
-        timestamp: new Date().toISOString(),
-        version: '2.0-modular',
-        architecture: 'modular'
-    });
+    res.json(healthMonitor.getHealthStatus());
+});
+
+// Додання ендпоінту для метрик
+app.get('/metrics', (req, res) => {
+  // Тільки для авторизованих запитів
+  // ...authorization check...
+  res.json({
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+    cpu: process.cpuUsage()
+  });
 });
 
 // Agents configuration
@@ -210,15 +255,56 @@ app.post('/tts/completed', async (req, res) => {
     res.json({ success: true, voice: voice });
 });
 
+// Додання глобального обробника помилок
+process.on('uncaughtException', (error) => {
+  logger.error('Необроблене виключення:', error);
+  errorHandler.handleError(error, { global: true })
+    .catch(err => {
+      logger.error('Помилка при обробці виключення:', err);
+      process.exit(1);
+    });
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('Необроблене відхилення проміса:', reason);
+  errorHandler.handleError(reason, { global: true, isRejection: true })
+    .catch(err => {
+      logger.error('Помилка при обробці відхилення проміса:', err);
+    });
+});
+
+// Інтеграція обробника помилок в API сервера
+app.use((err, req, res, next) => {
+  errorHandler.handleError(err, { 
+    route: req.path, 
+    method: req.method 
+  })
+    .then(result => {
+      res.status(500).json({ 
+        error: true, 
+        message: err.message,
+        recoveryAction: result.action 
+      });
+    })
+    .catch(handlerError => {
+      logger.error('Помилка обробника помилок:', handlerError);
+      res.status(500).json({ 
+        error: true, 
+        message: 'Internal server error' 
+      });
+    });
+});
+
 // Start server
 app.listen(PORT, () => {
-    logMessage('info', `Orchestrator server running on port ${PORT}`);
-    logMessage('info', 'FEATURES:');
-    logMessage('info', '- Modular architecture');
-    logMessage('info', '- Separated workflow logic');
-    logMessage('info', '- Integrated fallback LLM');
-    logMessage('info', '- Clean agent configuration');
-    logMessage('info', '- Improved error handling');
+    logger.info(`Orchestrator server running on port ${PORT}`);
+    logger.info('FEATURES:');
+    logger.info('- Centralized state management');
+    logger.info('- Unified error handling');
+    logger.info('- Agent manager with protocol');
+    logger.info('- Standardized prompts');
+    logger.info('- Telemetry and monitoring');
+    logger.info('- Modular architecture');
 });
 
 export default app;

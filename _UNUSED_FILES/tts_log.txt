@@ -1,8 +1,0 @@
-TTS demo failed:
-Traceback (most recent call last):
-  File "/Users/dev/Documents/GitHub/atlas4/ukrainian-tts/quick_tts_demo.py", line 42, in main
-    _, accented = tts.tts(text, args.voice, Stress.Dictionary.value, buf)
-                                            ^^^^^^^^^^^^^^^^^
-  File "/opt/homebrew/Cellar/python@3.11/3.11.13/Frameworks/Python.framework/Versions/3.11/lib/python3.11/enum.py", line 786, in __getattr__
-    raise AttributeError(name) from None
-AttributeError: Dictionary

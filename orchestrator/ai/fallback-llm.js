@@ -5,6 +5,10 @@
 
 import axios from 'axios';
 
+// Імпортуємо нові модулі
+const logger = require('../utils/logger');
+const agentProtocol = require('../agents/agent-protocol');
+
 // Model registry
 const MODELS = [
     'mistral-ai/ministral-3b',
@@ -139,6 +143,29 @@ export function getAvailableModels() {
         created: Date.now(), 
         owned_by: 'atlas-fallback' 
     }));
+}
+
+// Process function for agent protocol compatibility
+export async function process(input, options = {}) {
+  try {
+    logger.info('Активація запасної LLM моделі');
+    
+    // Форматування запиту згідно протоколу
+    const query = agentProtocol.createQuery(input, {
+      isFallback: true,
+      options
+    });
+    
+    // Перетворення input в формат messages для chatCompletion
+    const messages = Array.isArray(input) ? input : [{ role: 'user', content: input }];
+    const result = await chatCompletion(messages, options);
+    
+    // Форматування відповіді згідно протоколу
+    return agentProtocol.createResponse(result);
+  } catch (error) {
+    logger.error(`Помилка запасної LLM: ${error.message}`);
+    return agentProtocol.createError(error.message, 'FALLBACK_LLM_ERROR');
+  }
 }
 
 // Simple rule-based reply generation

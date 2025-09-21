@@ -9,6 +9,11 @@ import { AGENTS } from '../config/agents.js';
 import { callGooseAgent } from '../agents/goose-client.js';
 import { logMessage, sendToTTSAndWait, generateMessageId } from '../utils/helpers.js';
 
+// Імпортуємо нові централізовані модулі
+const logger = require('../utils/logger');
+const telemetry = require('../utils/telemetry');
+const errorHandler = require('../errors/error-handler');
+
 // Семафор для запобігання одночасному запуску агентів
 const activeAgentSessions = new Set();
 
@@ -33,7 +38,8 @@ export async function executeStepByStepWorkflow(userMessage, session, res) {
         timestamp: Date.now()
     });
     
-    logMessage('info', `Starting step-by-step workflow following WORKFLOW_STAGES configuration`);
+    const workflowStart = Date.now();
+    logger.info(`Starting step-by-step workflow following WORKFLOW_STAGES configuration`);
     
     // Виконуємо етапи згідно конфігурації WORKFLOW_STAGES
     for (const stageConfig of WORKFLOW_STAGES) {
@@ -74,18 +80,54 @@ export async function executeStepByStepWorkflow(userMessage, session, res) {
         session.currentStage = stageConfig.stage;
         let response;
         
+        const stageStart = Date.now();
+        
         try {
-            logMessage('info', `Starting execution of stage ${stageConfig.stage} for agent ${stageConfig.agent}`);
+            logger.info(`Starting execution of stage ${stageConfig.stage} for agent ${stageConfig.agent}`);
             response = await executeStageByConfig(stageConfig, userMessage, session, res);
+            
+            const stageDuration = Date.now() - stageStart;
+            
             if (!response) {
-                logMessage('error', `Stage ${stageConfig.stage} failed - response is null/undefined`);
+                logger.error(`Stage ${stageConfig.stage} failed - response is null/undefined`);
+                
+                // Записуємо метрику з помилкою
+                telemetry.recordExecution('workflow_stage', stageDuration, false, {
+                  stage: stageConfig.stage,
+                  agent: stageConfig.agent,
+                  error: 'null_response'
+                });
+                
                 return;
             }
-            logMessage('info', `Stage ${stageConfig.stage} completed successfully, adding to history`);
+            
+            logger.info(`Stage ${stageConfig.stage} completed successfully, adding to history`);
             session.history.push(response);
-            logMessage('info', `History now contains ${session.history.length} messages`);
+            logger.info(`History now contains ${session.history.length} messages`);
+            
+            // Записуємо метрику успішного виконання
+            telemetry.recordExecution('workflow_stage', stageDuration, true, {
+              stage: stageConfig.stage,
+              agent: stageConfig.agent
+            });
+            
         } catch (error) {
-            logMessage('error', `Stage ${stageConfig.stage} error: ${error.message}`);
+            const stageDuration = Date.now() - stageStart;
+            logger.error(`Stage ${stageConfig.stage} error: ${error.message}`);
+            
+            // Використовуємо централізований обробник помилок
+            const recovery = await errorHandler.handleError(error, {
+              stage: stageConfig.stage,
+              agent: stageConfig.agent,
+              workflow: 'step-by-step'
+            });
+            
+            // Записуємо метрику з помилкою
+            telemetry.recordExecution('workflow_stage', stageDuration, false, {
+              stage: stageConfig.stage,
+              agent: stageConfig.agent,
+              error: error.message
+            });
             if (!res.writableEnded) {
                 res.write(JSON.stringify({
                     type: 'workflow_error',
@@ -186,6 +228,20 @@ export async function executeStepByStepWorkflow(userMessage, session, res) {
             }
         }
     }
+    
+    // Логування завершення workflow
+    const workflowDuration = Date.now() - workflowStart;
+    logger.info(`Step-by-step workflow completed`, {
+        duration: `${workflowDuration}ms`,
+        totalStages: session.history.length,
+        cycles: session.retryCycle || 0
+    });
+    
+    // Записуємо метрику виконання всього workflow
+    telemetry.recordExecution('workflow', workflowDuration, true, {
+        workflow: 'step-by-step',
+        totalStages: session.history.length
+    });
 }
 
 // Виконання етапу згідно конфігурації WORKFLOW_STAGES

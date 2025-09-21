@@ -9,6 +9,10 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs';
 
+// Імпортуємо нові модулі
+const logger = require('../utils/logger');
+const agentProtocol = require('./agent-protocol');
+
 // Функція автоматичного виявлення порту Goose
 export async function detectGoosePort() {
     const commonPorts = [3000]; // Goose CLI web server always uses port 3000
@@ -33,6 +37,28 @@ export async function detectGoosePort() {
     
     console.warn('[GOOSE] Port not detected, using default 3000');
     return 3000;
+}
+
+// Оновлений виклик Goose агента для використання загального протоколу
+export async function execute(model, input, options = {}) {
+  try {
+    logger.info(`Відправка запиту в Goose model: ${model}`);
+    
+    // Форматування запиту згідно протоколу
+    const query = agentProtocol.createQuery(input, {
+      model,
+      options
+    });
+    
+    // Виклик існуючої функції callGooseAgent
+    const result = await callGooseAgent(input, options.sessionId || 'default', options);
+    
+    // Форматування відповіді згідно протоколу
+    return agentProtocol.createResponse(result);
+  } catch (error) {
+    logger.error(`Помилка при виконанні Goose запиту: ${error.message}`);
+    return agentProtocol.createError(error.message, 'GOOSE_EXECUTION_ERROR');
+  }
 }
 
 // Виправлений виклик Goose агента (БЕЗ fallback симуляції)
