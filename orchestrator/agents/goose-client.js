@@ -172,7 +172,7 @@ async function callGooseWebSocket(baseUrl, message, sessionId) {
                         console.log(`[GOOSE] Tool request structure: ${JSON.stringify(obj, null, 2)}`);
                         
                         // Перевіряємо, доступний ли інструмент
-                        const availableExtensions = ['computercontroller', 'memory', 'developer', 'playwright', 'vscode'];
+                        const availableExtensions = ['computercontroller', 'memory', 'developer', 'playwright', 'vscode-mcp-server'];
                         const isToolAvailable = availableExtensions.some(ext => obj.tool_name?.includes(ext)) || 
                                                obj.tool_name?.startsWith('browser_') || 
                                                obj.tool_name?.startsWith('playwright__') ||
