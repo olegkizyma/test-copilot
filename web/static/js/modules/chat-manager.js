@@ -313,8 +313,8 @@ export class ChatManager {
                 
                 this.logger.info(`Processing pending TTS: voice=${voice}, id=${id}`);
                 
-                // Озвучуємо текст з правильним voice
-                await this.ttsManager.speak(text, voice, { voice: voice });
+                // Озвучуємо текст з правильним voice - передаємо voice як окремий параметр
+                await this.ttsManager.speak(text, voice);
                 
                 this.logger.info(`TTS completed for request: ${id}`);
             }

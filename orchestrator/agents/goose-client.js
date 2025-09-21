@@ -66,9 +66,9 @@ ${prompt}`;
     }
     // Для Тетяни і Гріші - доступ до tools БЕЗ vision функцій
     
-    // Обмежуємо довжину повідомлення до 4000 символів для кращої роботи з tools
-    const truncatedMessage = enhancedPrompt.length > 4000 
-        ? enhancedPrompt.slice(0, 3997) + "..."
+    // Обмежуємо довжину повідомлення до 2000 символів для Goose
+    const truncatedMessage = enhancedPrompt.length > 2000 
+        ? enhancedPrompt.slice(0, 1997) + "..."
         : enhancedPrompt;
     
     // Автоматично виявляємо порт Goose або використовуємо змінну середовища

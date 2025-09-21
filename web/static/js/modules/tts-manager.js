@@ -132,7 +132,18 @@ export class TTSManager {
             return;
         }
 
-        const voice = AGENTS[agent]?.voice || TTS_CONFIG.defaultVoice;
+        // Визначаємо voice: якщо agent є голосом, використовуємо його, інакше отримуємо з конфігурації
+        let voice;
+        if (typeof agent === 'string' && !AGENTS[agent]) {
+            // agent є голосом напряму
+            voice = agent;
+        } else if (AGENTS[agent]) {
+            // agent є ім'ям агента, отримуємо voice з конфігурації
+            voice = AGENTS[agent].voice;
+        } else {
+            // fallback до default voice
+            voice = TTS_CONFIG.defaultVoice;
+        }
         
         try {
             this.logger.info(`Speaking for ${agent} (${voice}): ${text.substring(0, 50)}...`);

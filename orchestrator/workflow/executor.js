@@ -75,12 +75,15 @@ export async function executeStepByStepWorkflow(userMessage, session, res) {
         let response;
         
         try {
+            logMessage('info', `Starting execution of stage ${stageConfig.stage} for agent ${stageConfig.agent}`);
             response = await executeStageByConfig(stageConfig, userMessage, session, res);
             if (!response) {
-                logMessage('error', `Stage ${stageConfig.stage} failed - stopping workflow`);
+                logMessage('error', `Stage ${stageConfig.stage} failed - response is null/undefined`);
                 return;
             }
+            logMessage('info', `Stage ${stageConfig.stage} completed successfully, adding to history`);
             session.history.push(response);
+            logMessage('info', `History now contains ${session.history.length} messages`);
         } catch (error) {
             logMessage('error', `Stage ${stageConfig.stage} error: ${error.message}`);
             if (!res.writableEnded) {

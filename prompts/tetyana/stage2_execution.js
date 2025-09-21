@@ -50,14 +50,23 @@ export const TETYANA_STAGE2_SYSTEM_PROMPT = `
 Ці формати важливі для правильного визначення стану workflow!
 `;
 
-export const TETYANA_STAGE2_USER_PROMPT = (atlasTask, originalRequest = "") => `
-Atlas переформулював завдання для тебе:
-${atlasTask}
+export const TETYANA_STAGE2_USER_PROMPT = (atlasTask, originalRequest = "") => {
+    // Обрізаємо завдання Atlas до 500 символів, щоб не перевищувати ліміт
+    const shortAtlasTask = atlasTask.length > 500 
+        ? atlasTask.slice(0, 497) + "..."
+        : atlasTask;
+    
+    const shortOriginal = originalRequest.length > 200 
+        ? originalRequest.slice(0, 197) + "..."
+        : originalRequest;
+    
+    return `
+Завдання від Atlas: ${shortAtlasTask}
 
-${originalRequest ? `Оригінальний запит користувача: ${originalRequest}` : ''}
+${shortOriginal ? `Запит: ${shortOriginal}` : ''}
 
-Виконай це завдання максимально повно. Використовуй всі доступні інструменти.
-`;
+Виконай завдання.`;
+};
 
 export default {
     TETYANA_STAGE2_ROLE,
