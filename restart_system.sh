@@ -35,10 +35,16 @@ REAL_TTS_MODE="${REAL_TTS_MODE:-true}"
 TTS_DEVICE="${TTS_DEVICE:-mps}"
 TTS_PORT="${TTS_PORT:-3001}"
 
+# Whisper Configuration
+WHISPER_MODEL="${WHISPER_MODEL:-base}"
+WHISPER_DEVICE="${WHISPER_DEVICE:-cpu}"
+WHISPER_PORT="${WHISPER_PORT:-3002}"
+
 # Service Ports
 FRONTEND_PORT=5001
 ORCHESTRATOR_PORT=5101
 RECOVERY_PORT=5102
+WHISPER_SERVICE_PORT=3002
 FALLBACK_PORT=3010
 
 # Features
@@ -420,6 +426,26 @@ start_tts_service() {
     fi
 }
 
+start_whisper_service() {
+    log_progress "Starting Whisper Service on port $WHISPER_PORT..."
+    
+    if ! check_port "$WHISPER_PORT"; then
+        log_warn "Port $WHISPER_PORT is busy. Skipping Whisper."
+        return 0
+    fi
+    
+    (
+        cd "$REPO_ROOT"
+        # Встановлюємо змінні середовища для Metal Performance Shaders
+        export WHISPER_MODEL="$WHISPER_MODEL"
+        export PYTORCH_ENABLE_MPS_FALLBACK=1
+        
+        python3 whisper_service.py > "$LOGS_DIR/whisper.log" 2>&1 &
+        echo $! > "$LOGS_DIR/whisper.pid"
+    )
+    log_success "Whisper Service started with model $WHISPER_MODEL on $WHISPER_DEVICE"
+}
+
 start_orchestrator() {
     log_progress "Starting Node.js Orchestrator on port $ORCHESTRATOR_PORT..."
     
@@ -537,6 +563,7 @@ cmd_start() {
     
     # Start all other services in order
     start_tts_service
+    start_whisper_service
     start_orchestrator
     start_frontend
     start_recovery_bridge
@@ -573,10 +600,11 @@ cmd_stop() {
     stop_service "Orchestrator" "$LOGS_DIR/orchestrator.pid"
     stop_service "Goose Web Server" "$LOGS_DIR/goose_web.pid"
     stop_service "TTS Service" "$LOGS_DIR/tts.pid"
+    stop_service "Whisper Service" "$LOGS_DIR/whisper.pid"
     stop_service "Fallback LLM" "$LOGS_DIR/fallback.pid"
     
     # Clean up any remaining processes on ports (except Goose port)
-    for port in $FRONTEND_PORT $ORCHESTRATOR_PORT $RECOVERY_PORT $TTS_PORT $FALLBACK_PORT; do
+    for port in $FRONTEND_PORT $ORCHESTRATOR_PORT $RECOVERY_PORT $TTS_PORT $WHISPER_SERVICE_PORT $FALLBACK_PORT; do
         if ! check_port "$port"; then
             local pid=$(lsof -ti:$port 2>/dev/null || true)
             if [ -n "$pid" ]; then
@@ -632,6 +660,7 @@ cmd_status() {
     check_service "Orchestrator" "$LOGS_DIR/orchestrator.pid" "$ORCHESTRATOR_PORT"
     check_service "Recovery Bridge" "$LOGS_DIR/recovery.pid" "$RECOVERY_PORT"
     check_service "TTS Service" "$LOGS_DIR/tts.pid" "$TTS_PORT"
+    check_service "Whisper Service" "$LOGS_DIR/whisper.pid" "$WHISPER_SERVICE_PORT"
     
     if [ "$ENABLE_LOCAL_FALLBACK" = "true" ]; then
         check_service "Fallback LLM" "$LOGS_DIR/fallback.pid" "$FALLBACK_PORT"
@@ -661,12 +690,15 @@ cmd_logs() {
             tts)
                 tail -f "$LOGS_DIR/tts.log"
                 ;;
+            whisper)
+                tail -f "$LOGS_DIR/whisper.log"
+                ;;
             fallback)
                 tail -f "$LOGS_DIR/fallback.log"
                 ;;
             *)
                 log_error "Unknown service: $service"
-                echo "Available services: goose, frontend, orchestrator, recovery, tts, fallback"
+                echo "Available services: goose, frontend, orchestrator, recovery, tts, whisper, fallback"
                 exit 1
                 ;;
         esac

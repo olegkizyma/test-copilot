@@ -6,6 +6,7 @@
 import { logger } from './core/logger.js';
 import { AGENTS } from './core/config.js';
 import { ChatManager } from './modules/chat-manager.js';
+import { VoiceControlSystem } from './voice-control/index.js';
 
 class AtlasApp {
     constructor() {
@@ -16,7 +17,8 @@ class AtlasApp {
         this.managers = {
             chat: null,
             status: null,
-            logger: null
+            logger: null,
+            voiceControl: null
         };
     }
 
@@ -48,6 +50,10 @@ class AtlasApp {
         // Ініціалізуємо Chat Manager
         this.managers.chat = new ChatManager();
         await this.managers.chat.init();
+        
+        // Ініціалізуємо систему голосового управління
+        this.managers.voiceControl = new VoiceControlSystem(this.managers.chat);
+        await this.managers.voiceControl.initialize();
         
         // Ініціалізуємо Status Manager (якщо потрібен)
         if (document.getElementById('status-container')) {

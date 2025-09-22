@@ -1,0 +1,356 @@
+#!/usr/bin/env python3
+"""
+ATLAS Whisper Speech Recognition Service
+Сервіс для розпізнавання мови з використанням faster-whisper Large v3
+"""
+
+import os
+import io
+import logging
+import tempfile
+from datetime import datetime
+from pathlib import Path
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+from faster_whisper import WhisperModel
+
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+)
+logger = logging.getLogger('atlas.whisper')
+
+# Конфігурація
+WHISPER_PORT = int(os.environ.get('WHISPER_PORT', 3002))
+WHISPER_MODEL = 'large-v3'  # Використовуємо Large v3 для найкращої якості
+DEVICE = "auto"  # faster-whisper автоматично обере найкращий пристрій
+COMPUTE_TYPE = "float32"  # Для стабільності на Apple Silicon
+
+# Створення Flask app
+app = Flask(__name__)
+CORS(app)
+
+# Глобальні змінні для моделі
+whisper_model = None
+
+def load_whisper_model():
+    """Завантаження моделі faster-whisper Large v3"""
+    global whisper_model
+    
+    if whisper_model is not None:
+        return whisper_model
+    
+    logger.info(f"🤖 Завантаження faster-whisper {WHISPER_MODEL} моделі...")
+    logger.info(f"Device: {DEVICE}, Compute type: {COMPUTE_TYPE}")
+    start_time = datetime.now()
+    
+    try:
+        # Завантажуємо Large v3 модель
+        whisper_model = WhisperModel(
+            WHISPER_MODEL,
+            device=DEVICE,
+            compute_type=COMPUTE_TYPE,
+            download_root=None,  # Використовуємо стандартну директорію
+            local_files_only=False
+        )
+        
+        load_time = (datetime.now() - start_time).total_seconds()
+        logger.info(f"✅ faster-whisper {WHISPER_MODEL} модель завантажена успішно за {load_time:.2f} секунд!")
+        
+        return whisper_model
+        
+    except Exception as e:
+        logger.error(f"❌ Помилка завантаження моделі: {e}")
+        
+        # Fallback до CPU якщо не вдалося
+        try:
+            logger.info("Спроба fallback на CPU...")
+            whisper_model = WhisperModel(
+                WHISPER_MODEL,
+                device="cpu",
+                compute_type="float32"
+            )
+            load_time = (datetime.now() - start_time).total_seconds()
+            logger.info(f"✅ Модель завантажена на CPU за {load_time:.2f} секунд")
+            return whisper_model
+            
+        except Exception as cpu_e:
+            logger.error(f"❌ CPU fallback також не вдався: {cpu_e}")
+            return None
+
+@app.route('/health')
+def health():
+    """Перевірка стану сервісу"""
+    global whisper_model
+    
+    try:
+        model_loaded = whisper_model is not None
+        return jsonify({
+            'status': 'ok',
+            'model_loaded': model_loaded,
+            'model_name': WHISPER_MODEL if model_loaded else None,
+            'device': DEVICE,
+            'compute_type': COMPUTE_TYPE,
+            'timestamp': datetime.now().isoformat(),
+            'service': 'atlas-whisper-large-v3'
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+@app.route('/transcribe', methods=['POST'])
+def transcribe_audio():
+    """
+    Розпізнавання мови з аудіо файлу
+    
+    Expected:
+    - audio file in request.files['audio']
+    - optional: language (uk, en, etc.)
+    
+    Returns:
+    - JSON with transcribed text
+    """
+    try:
+        # Перевіряємо наявність аудіо файлу
+        if 'audio' not in request.files:
+            return jsonify({
+                'error': 'No audio file provided',
+                'status': 'error'
+            }), 400
+        
+        audio_file = request.files['audio']
+        if audio_file.filename == '':
+            return jsonify({
+                'error': 'Empty audio file',
+                'status': 'error'
+            }), 400
+        
+        # Отримуємо мову (за замовчуванням українська)
+        language = request.form.get('language', 'uk')
+        
+        logger.info(f"🎤 Transcribing audio file: {audio_file.filename}, language: {language}")
+        
+        # Завантажуємо модель якщо необхідно
+        model = load_whisper_model()
+        if model is None:
+            return jsonify({
+                'error': 'Whisper model not available',
+                'status': 'error'
+            }), 500
+        
+        # Додаткові параметри транскрипції
+        beam_size = int(request.form.get('beam_size', 5))
+        word_timestamps = request.form.get('word_timestamps', 'false').lower() == 'true'
+        
+        logger.info(f"Параметри: language={language}, beam_size={beam_size}, word_timestamps={word_timestamps}")
+        
+        # Зберігаємо аудіо у тимчасовий файл
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_file:
+            audio_file.save(temp_file.name)
+            temp_path = temp_file.name
+        
+        try:
+            # Розпізнаємо мову з Large v3
+            start_time = datetime.now()
+            
+            segments, info = model.transcribe(
+                temp_path,
+                beam_size=beam_size,
+                language=language if language != 'auto' else None,
+                word_timestamps=word_timestamps,
+                vad_filter=True,  # Фільтр активності голосу
+                vad_parameters=dict(min_silence_duration_ms=500)
+            )
+            
+            # Збираємо текст з усіх сегментів
+            transcription_segments = []
+            full_text_parts = []
+            
+            for segment in segments:
+                segment_data = {
+                    'start': segment.start,
+                    'end': segment.end,
+                    'text': segment.text
+                }
+                
+                if word_timestamps and hasattr(segment, 'words'):
+                    segment_data['words'] = [
+                        {
+                            'start': word.start,
+                            'end': word.end,
+                            'word': word.word,
+                            'probability': word.probability
+                        }
+                        for word in segment.words
+                    ]
+                
+                transcription_segments.append(segment_data)
+                full_text_parts.append(segment.text)
+            
+            full_text = ' '.join(full_text_parts).strip()
+            transcription_time = (datetime.now() - start_time).total_seconds()
+            
+            logger.info(f"✅ Транскрипція завершена за {transcription_time:.2f}с: '{full_text[:100]}...'")
+            
+            response_data = {
+                'status': 'success',
+                'text': full_text,
+                'language': info.language,
+                'language_probability': round(info.language_probability, 4),
+                'duration': round(info.duration, 2),
+                'transcription_time': round(transcription_time, 2),
+                'model': WHISPER_MODEL,
+                'segments': transcription_segments if word_timestamps else None,
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            return jsonify(response_data)
+            
+        finally:
+            # Видаляємо тимчасовий файл
+            try:
+                os.unlink(temp_path)
+            except Exception as cleanup_error:
+                logger.warning(f"Не вдалося видалити тимчасовий файл: {cleanup_error}")
+                
+    except Exception as e:
+        logger.error(f"❌ Transcription error: {e}")
+        return jsonify({
+            'error': str(e),
+            'status': 'error'
+        }), 500
+
+@app.route('/transcribe_blob', methods=['POST'])
+def transcribe_blob():
+    """
+    Розпізнавання мови з бінарних даних
+    
+    Expected:
+    - binary audio data in request.data
+    - optional: language in query params
+    
+    Returns:
+    - JSON with transcribed text
+    """
+    try:
+        # Перевіряємо наявність даних
+        if not request.data:
+            return jsonify({
+                'error': 'No audio data provided',
+                'status': 'error'
+            }), 400
+        
+        # Отримуємо мову
+        language = request.args.get('language', 'uk')
+        
+        logger.info(f"🎤 Transcribing audio blob ({len(request.data)} bytes), language: {language}")
+        
+        # Завантажуємо модель якщо необхідно
+        model = load_whisper_model()
+        if model is None:
+            return jsonify({
+                'error': 'Whisper model not available',
+                'status': 'error'
+            }), 500
+        
+        # Зберігаємо дані у тимчасовий файл
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_file:
+            temp_file.write(request.data)
+            temp_path = temp_file.name
+        
+        try:
+            # Розпізнаємо мову
+            start_time = datetime.now()
+            
+            result = model.transcribe(
+                temp_path,
+                language=language if language != 'auto' else None,
+                task='transcribe',
+                fp16=False,
+                verbose=False
+            )
+            
+            transcription_time = (datetime.now() - start_time).total_seconds()
+            
+            # Витягуємо текст
+            text = result.get('text', '').strip()
+            detected_language = result.get('language', language)
+            
+            logger.info(f"✅ Blob transcription completed in {transcription_time:.2f}s: '{text[:50]}...'")
+            
+            return jsonify({
+                'status': 'success',
+                'text': text,
+                'language': detected_language,
+                'transcription_time': transcription_time,
+                'model': WHISPER_MODEL,
+                'device': DEVICE
+            })
+            
+        finally:
+            # Видаляємо тимчасовий файл
+            try:
+                os.unlink(temp_path)
+            except:
+                pass
+                
+    except Exception as e:
+        logger.error(f"❌ Blob transcription error: {e}")
+        return jsonify({
+            'error': str(e),
+            'status': 'error'
+        }), 500
+
+@app.route('/models')
+def list_models():
+    """Список доступних моделей Whisper"""
+    available_models = [
+        'tiny', 'tiny.en',
+        'base', 'base.en', 
+        'small', 'small.en',
+        'medium', 'medium.en',
+        'large-v1', 'large-v2', 'large-v3'
+    ]
+    
+    return jsonify({
+        'available_models': available_models,
+        'current_model': WHISPER_MODEL,
+        'device': DEVICE,
+        'model_loaded': whisper_model is not None
+    })
+
+def initialize_service():
+    """Ініціалізація сервісу Whisper"""
+    logger.info("🚀 Ініціалізація ATLAS Whisper Large v3 Service...")
+    logger.info(f"Порт: {WHISPER_PORT}")
+    logger.info(f"Модель: {WHISPER_MODEL}")
+    logger.info(f"Пристрій: {DEVICE}")
+    
+    try:
+        load_whisper_model()
+        logger.info("✅ Сервіс ініціалізовано успішно!")
+    except Exception as e:
+        logger.error(f"❌ Помилка ініціалізації: {e}")
+        raise
+
+if __name__ == '__main__':
+    try:
+        initialize_service()
+        
+        logger.info(f"🌐 Запуск сервера на порту {WHISPER_PORT}...")
+        app.run(
+            host='0.0.0.0',
+            port=WHISPER_PORT,
+            debug=False,
+            threaded=True
+        )
+        
+    except KeyboardInterrupt:
+        logger.info("🛑 Сервіс зупинено користувачем")
+    except Exception as e:
+        logger.error(f"❌ Критична помилка: {e}")
+        exit(1)
