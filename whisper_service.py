@@ -145,8 +145,9 @@ def transcribe_audio():
         # Додаткові параметри транскрипції
         beam_size = int(request.form.get('beam_size', 5))
         word_timestamps = request.form.get('word_timestamps', 'false').lower() == 'true'
+        use_vad = request.form.get('use_vad', 'true').lower() == 'true'
         
-        logger.info(f"Параметри: language={language}, beam_size={beam_size}, word_timestamps={word_timestamps}")
+        logger.info(f"Параметри: language={language}, beam_size={beam_size}, word_timestamps={word_timestamps}, use_vad={use_vad}")
         
         # Зберігаємо аудіо у тимчасовий файл
         with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_file:
@@ -157,14 +158,22 @@ def transcribe_audio():
             # Розпізнаємо мову з Large v3
             start_time = datetime.now()
             
-            segments, info = model.transcribe(
-                temp_path,
-                beam_size=beam_size,
-                language=language if language != 'auto' else None,
-                word_timestamps=word_timestamps,
-                vad_filter=True,  # Фільтр активності голосу
-                vad_parameters=dict(min_silence_duration_ms=500)
-            )
+            # Налаштовуємо VAD параметри
+            transcribe_params = {
+                'beam_size': beam_size,
+                'language': language if language != 'auto' else None,
+                'word_timestamps': word_timestamps,
+                'vad_filter': use_vad
+            }
+            
+            if use_vad:
+                transcribe_params['vad_parameters'] = dict(
+                    min_silence_duration_ms=2000,  # Збільшуємо мінімальну тривалість мовчання
+                    threshold=0.3,  # Знижуємо поріг детекції голосу для більшої чутливості
+                    min_speech_duration_ms=100  # Мінімальна тривалість мови
+                )
+            
+            segments, info = model.transcribe(temp_path, **transcribe_params)
             
             # Збираємо текст з усіх сегментів
             transcription_segments = []
@@ -244,10 +253,11 @@ def transcribe_blob():
                 'status': 'error'
             }), 400
         
-        # Отримуємо мову
+        # Отримуємо мову та параметри
         language = request.args.get('language', 'uk')
+        use_vad = request.args.get('use_vad', 'true').lower() == 'true'
         
-        logger.info(f"🎤 Transcribing audio blob ({len(request.data)} bytes), language: {language}")
+        logger.info(f"🎤 Transcribing audio blob ({len(request.data)} bytes), language: {language}, use_vad: {use_vad}")
         
         # Завантажуємо модель якщо необхідно
         model = load_whisper_model()
@@ -266,19 +276,30 @@ def transcribe_blob():
             # Розпізнаємо мову
             start_time = datetime.now()
             
-            result = model.transcribe(
-                temp_path,
-                language=language if language != 'auto' else None,
-                task='transcribe',
-                fp16=False,
-                verbose=False
-            )
+            # Налаштовуємо VAD параметри
+            transcribe_params = {
+                'language': language if language != 'auto' else None,
+                'vad_filter': use_vad
+            }
+            
+            if use_vad:
+                transcribe_params['vad_parameters'] = dict(
+                    min_silence_duration_ms=2000,  # Збільшуємо мінімальну тривалість мовчання
+                    threshold=0.3,  # Знижуємо поріг детекції голосу для більшої чутливості
+                    min_speech_duration_ms=100  # Мінімальна тривалість мови
+                )
+            
+            segments, info = model.transcribe(temp_path, **transcribe_params)
             
             transcription_time = (datetime.now() - start_time).total_seconds()
             
-            # Витягуємо текст
-            text = result.get('text', '').strip()
-            detected_language = result.get('language', language)
+            # Збираємо текст з усіх сегментів
+            full_text_parts = []
+            for segment in segments:
+                full_text_parts.append(segment.text)
+            
+            text = ' '.join(full_text_parts).strip()
+            detected_language = info.language
             
             logger.info(f"✅ Blob transcription completed in {transcription_time:.2f}s: '{text[:50]}...'")
             

@@ -119,6 +119,13 @@ export class ChatManager {
         return message;
     }
 
+    /**
+     * Додає повідомлення користувача (для сумісності з існуючим кодом)
+     */
+    addUserMessage(content) {
+        return this.addMessage(content, 'user');
+    }
+
     renderMessage(message) {
         if (!this.chatContainer) return;
 

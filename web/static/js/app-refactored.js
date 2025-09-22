@@ -71,6 +71,13 @@ class AtlasApp {
         window.atlasChat = this.managers.chat;
         window.atlasStatus = this.managers.status;
         window.atlasLogger = this.managers.logger;
+        
+        // Додаткова сумісність для старого коду
+        if (window.atlasChat && !window.atlasChat.addUserMessage) {
+            window.atlasChat.addUserMessage = (message) => {
+                return this.managers.chat.addUserMessage(message);
+            };
+        }
     }
 
     setupUI() {

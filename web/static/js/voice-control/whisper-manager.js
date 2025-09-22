@@ -148,6 +148,7 @@ export class WhisperManager {
             const formData = new FormData();
             formData.append('audio', audioBlob, 'recording.webm');
             formData.append('language', language);
+            formData.append('use_vad', 'false');  // Отключаем VAD для тестирования
 
             const response = await fetch(`${this.serviceUrl}/transcribe`, {
                 method: 'POST',

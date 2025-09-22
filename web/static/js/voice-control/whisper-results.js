@@ -57,10 +57,20 @@ export class WhisperResultsManager {
         row.innerHTML = `
             <td class="whisper-timestamp">${timeStr}</td>
             <td class="whisper-mode ${result.mode || 'short'}">${(result.mode || 'short').toUpperCase()}</td>
-            <td class="whisper-text" title="${result.text || ''}">${this.truncateText(result.text || '', 50)}</td>
+            <td class="whisper-text clickable-text" title="Клікніть щоб відправити в чат: ${result.text || ''}" data-text="${result.text || ''}">${this.truncateText(result.text || '', 50)}</td>
             <td class="whisper-language">${(result.language || 'uk').toUpperCase()}</td>
             <td class="whisper-status ${result.status || 'processing'}">${(result.status || 'processing').toUpperCase()}</td>
         `;
+
+        // Додаємо обробник кліку на текст для відправки в чат
+        const textCell = row.querySelector('.whisper-text');
+        if (textCell && result.text && result.text.trim()) {
+            textCell.addEventListener('click', () => {
+                this.sendToChat(result.text.trim());
+            });
+            textCell.style.cursor = 'pointer';
+            textCell.style.color = '#00ff88';
+        }
 
         // Добавляем в начало таблицы (новые результаты сверху)
         this.tableBody.insertBefore(row, this.tableBody.firstChild);
@@ -164,16 +174,48 @@ export class WhisperResultsManager {
         
         // Если текст есть - отправляем в чат (для интеграции с основной системой)
         if (text && text.trim() && window.atlasChat) {
-            // Добавляем сообщение в чат как пользовательское
-            window.atlasChat.addUserMessage(text.trim());
-            
-            // Отправляем сообщение через чат-менеджер
-            if (window.atlasChat.sendMessage) {
-                window.atlasChat.sendMessage(text.trim());
+            try {
+                // Добавляем сообщение в чат как пользовательское
+                if (typeof window.atlasChat.addUserMessage === 'function') {
+                    window.atlasChat.addUserMessage(text.trim());
+                    
+                    // Отправляем сообщение через чат-менеджер
+                    if (typeof window.atlasChat.sendMessage === 'function') {
+                        window.atlasChat.sendMessage(text.trim());
+                    }
+                } else {
+                    console.warn('⚠️ window.atlasChat.addUserMessage is not a function');
+                }
+            } catch (error) {
+                console.error('❌ Error adding whisper transcription to chat:', error);
             }
         }
 
         return result;
+    }
+
+    /**
+     * Відправляє текст в чат
+     * @param {string} text - Текст для відправки
+     */
+    sendToChat(text) {
+        try {
+            // Встановлюємо текст в input поле
+            const inputElement = document.getElementById('message-input');
+            if (inputElement) {
+                inputElement.value = text;
+            }
+            
+            // Відправляємо повідомлення через чат менеджер
+            if (window.atlasChat && typeof window.atlasChat.sendMessage === 'function') {
+                window.atlasChat.sendMessage(text);
+                console.log(`📤 Sent to chat: "${text}"`);
+            } else {
+                console.warn('⚠️ Chat manager not available');
+            }
+        } catch (error) {
+            console.error('❌ Error sending to chat:', error);
+        }
     }
 }
 

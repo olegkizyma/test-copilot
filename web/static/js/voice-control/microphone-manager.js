@@ -162,7 +162,9 @@ export class MicrophoneButtonManager {
     handleMouseDown(event) {
         event.preventDefault();
         
-        if (this.currentState !== VOICE_CONFIG.BUTTON_STATES.IDLE) {
+        // Дозволяємо взаємодію в режимі ключового слова (для його вимкнення)
+        if (this.currentState !== VOICE_CONFIG.BUTTON_STATES.IDLE && 
+            this.currentState !== VOICE_CONFIG.BUTTON_STATES.KEYWORD_MODE) {
             return;
         }
 
@@ -194,7 +196,7 @@ export class MicrophoneButtonManager {
             this.holdTimer = null;
         }
 
-        // Якщо кнопка була відпущена швидко - короткий клік
+        // Якщо кнопка була відпущена швидко - короткий клік (тільки якщо в режимі IDLE)
         if (this.currentState === VOICE_CONFIG.BUTTON_STATES.IDLE) {
             this.handleShortClick();
         }
@@ -204,9 +206,11 @@ export class MicrophoneButtonManager {
                 await this.stopWhisperRecording();
             }
         }
-        // Якщо в режимі ключового слова - вимикаємо його
+        // Якщо в режимі ключового слова - НЕ вимикаємо його автоматично
+        // Режим ключового слова повинен залишатися активним для очікування команди "Атлас"
         else if (this.currentState === VOICE_CONFIG.BUTTON_STATES.KEYWORD_MODE) {
-            this.stopKeywordMode();
+            this.logger.info('🎯 Keyword mode remains active after button release');
+            // Не викликаємо stopKeywordMode(), щоб режим залишився активним
         }
     }
 
@@ -300,14 +304,21 @@ export class MicrophoneButtonManager {
         // Добавляем результат в таблицу
         this.resultsManager.addWhisperTranscription(text, mode, language);
         
-        // Обрабатываем результат как обычное сообщение
-        this.handleStandardSpeechResult(text);
+        // НЕ відправляємо автоматично в чат - користувач сам вирішує
+        // this.handleStandardSpeechResult(text);
     }
 
     /**
      * Запуск режиму ключового слова
      */
     startKeywordMode() {
+        // Якщо режим ключового слова вже активний, вимикаємо його
+        if (this.currentState === VOICE_CONFIG.BUTTON_STATES.KEYWORD_MODE) {
+            this.logger.info('👂 Long hold detected - stopping keyword mode');
+            this.stopKeywordMode();
+            return;
+        }
+        
         this.logger.info('👂 Long hold detected - starting keyword mode');
         
         this.setState(VOICE_CONFIG.BUTTON_STATES.KEYWORD_MODE);

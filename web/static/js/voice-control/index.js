@@ -9,6 +9,14 @@ export { MicrophoneButtonManager } from './microphone-manager.js';
 export { WhisperManager } from './whisper-manager.js';
 export { WhisperResultsManager } from './whisper-results.js';
 
+// Импортируем для глобального доступа
+import { MicrophoneButtonManager } from './microphone-manager.js';
+
+// Делаем MicrophoneButtonManager доступным глобально
+if (typeof window !== 'undefined') {
+    window.MicrophoneButtonManager = MicrophoneButtonManager;
+}
+
 /**
  * Фабрика для створення повної системи голосового управління
  */
