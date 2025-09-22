@@ -41,8 +41,8 @@ export const VOICE_CONFIG = {
     
     // Налаштування кнопки мікрофону
     MICROPHONE_BUTTON: {
-        holdDuration: 2000, // 2 секунди для активації режиму ключового слова
-        clickTimeout: 300,  // Час для визначення короткого кліку
+        holdDuration: 1500, // 1.5 секунди замість 2
+        clickTimeout: 300
     },
     
     // Налаштування Whisper
