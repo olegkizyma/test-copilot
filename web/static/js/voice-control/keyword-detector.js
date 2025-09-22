@@ -11,6 +11,9 @@ export class KeywordDetectionManager {
         this.logger = new logger.constructor('KEYWORD_DETECTOR');
         this.isActive = false;
         this.recognition = null;
+        this.isInitialized = false;
+        this._recognitionRunning = false;
+        this._manualStop = false;
         this.onKeywordDetected = null;
         this.onSpeechResult = null;
         this.noSpeechCount = 0;
@@ -27,6 +30,9 @@ export class KeywordDetectionManager {
      * Ініціалізація розпізнавання мови для детекції ключового слова
      */
     initialize() {
+        if (this.isInitialized && this.recognition) {
+            return true;
+        }
         if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
             this.logger.error('Speech Recognition not supported in this browser');
             return false;
@@ -42,6 +48,7 @@ export class KeywordDetectionManager {
         this.recognition.maxAlternatives = VOICE_CONFIG.SPEECH_RECOGNITION.maxAlternatives;
 
         this.setupEventListeners();
+        this.isInitialized = true;
         return true;
     }
 
@@ -50,6 +57,7 @@ export class KeywordDetectionManager {
      */
     setupEventListeners() {
         this.recognition.onstart = () => {
+            this._recognitionRunning = true;
             this.logger.info('🎤 Keyword detection started');
         };
 
@@ -67,7 +75,7 @@ export class KeywordDetectionManager {
                 this.logger.debug(`Speech result: "${transcript}" (confidence: ${result[0].confidence})`);
 
                 if (result.isFinal) {
-                    this.logger.debug('Final speech successfully recognized, full transcript: "${transcript}"');
+                    this.logger.debug(`Final speech successfully recognized, full transcript: "${transcript}"`);
                     
                     // Перевіряємо наявність ключового слова
                     if (this.containsKeyword(transcript)) {
@@ -83,15 +91,25 @@ export class KeywordDetectionManager {
         };
 
         this.recognition.onerror = (event) => {
-            this.logger.error(`Speech recognition error: ${event.error}`);
+            // no-speech — нормальный сценарий для пауз, не считаем это ошибкой уровня error
+            if (event.error === 'no-speech') {
+                this.logger.warn(`Speech recognition: no-speech`);
+            } else {
+                this.logger.error(`Speech recognition error: ${event.error}`);
+            }
+            // Якщо була ручна зупинка, ігноруємо помилки
+            if (this._manualStop) {
+                this.logger.debug('Error occurred after manual stop; ignoring.');
+                return;
+            }
             if (event.error === 'no-speech') {
                 this.noSpeechCount++;
                 this.totalNoSpeechErrors++;
-                this.logger.warn(`No speech detected (consecutive: ${this.noSpeechCount}, total: ${this.totalNoSpeechErrors}), continuing...`);
+                this.logger.debug(`No speech detected (consecutive: ${this.noSpeechCount}, total: ${this.totalNoSpeechErrors}), continuing...`);
                 
                 // Якщо занадто багато спроб без мовлення підряд
                 if (this.noSpeechCount >= this.maxNoSpeechAttempts) {
-                    this.logger.warn('Too many consecutive no-speech errors, increasing restart delay');
+                    this.logger.debug('Too many consecutive no-speech events, increasing restart delay');
                 }
             } else {
                 // Скидаємо лічильник послідовних помилок для інших помилок
@@ -101,10 +119,11 @@ export class KeywordDetectionManager {
         };
 
         this.recognition.onend = () => {
+            this._recognitionRunning = false;
             this.logger.info('🎤 Keyword detection ended');
             
             // Автоматично перезапускаємо якщо режим активний і не в процесі перезапуску
-            if (this.isActive && !this.isRestarting) {
+            if (this.isActive && !this.isRestarting && !this._manualStop) {
                 this.isRestarting = true;
                 
                 // Експоненціальна затримка на основі загальної кількості помилок
@@ -113,7 +132,7 @@ export class KeywordDetectionManager {
                 this.logger.info(`⏳ Restarting in ${restartDelay}ms (no-speech count: ${this.noSpeechCount})`);
                 
                 setTimeout(() => {
-                    if (this.isActive) { // Перевіряємо знову перед перезапуском
+                    if (this.isActive && !this._manualStop) { // Перевіряємо знову перед перезапуском
                         this.isRestarting = false;
                         this._internalStart();
                     } else {
@@ -196,11 +215,23 @@ export class KeywordDetectionManager {
         }
 
         try {
+            // Не запускати, якщо вже запущено
+            if (this.isRecognitionActive()) {
+                this.logger.warn('Recognition is already active, skipping start call.');
+                return false;
+            }
             this.recognition.start();
             this.logger.info('🔄 Keyword detection restarted');
             return true;
         } catch (error) {
             this.logger.error('Failed to restart keyword detection:', error);
+            // Спробуємо зупинити розпізнавання, щоб вийти з некоректного стану
+            try {
+                this.recognition.stop();
+                this.logger.info('Forced stop of recognition due to restart failure.');
+            } catch (stopError) {
+                this.logger.error('Failed to force stop recognition:', stopError);
+            }
             this.isActive = false;
             return false;
         }
@@ -225,7 +256,11 @@ export class KeywordDetectionManager {
             this.isRestarting = false;
             this.noSpeechCount = 0; // Скидаємо лічильник при ручному запуску
             this.totalNoSpeechErrors = 0; // Скидаємо загальний лічільник
-            this.recognition.start();
+            if (!this.isRecognitionActive()) {
+                this.recognition.start();
+            } else {
+                this.logger.warn('Recognition already started by the browser');
+            }
             this.logger.info('🎯 Keyword detection mode activated');
             return true;
         } catch (error) {
@@ -240,17 +275,29 @@ export class KeywordDetectionManager {
      * Зупинка режиму детекції ключового слова
      */
     stop() {
-        if (!this.isActive) {
-            return;
-        }
-
+        // Always attempt to stop and clear flags
         this.isActive = false;
         this.isRestarting = false;
         this.noSpeechCount = 0;
         this.totalNoSpeechErrors = 0;
         
         if (this.recognition) {
-            this.recognition.stop();
+            try {
+                this._manualStop = true;
+                const originalOnEnd = this.recognition.onend;
+                this.recognition.onend = () => {
+                    // suppress single onend after manual stop
+                    this._recognitionRunning = false;
+                    this.logger.info('🎤 Keyword detection ended (manual stop)');
+                    // restore original handler for future starts
+                    this.recognition.onend = originalOnEnd;
+                    // clear manual stop after one cycle
+                    setTimeout(() => { this._manualStop = false; }, 0);
+                };
+                this.recognition.stop();
+            } catch (e) {
+                this.logger.warn('Error while stopping recognition (ignored):', e);
+            }
         }
         this.logger.info('🎯 Keyword detection mode deactivated');
     }
@@ -274,5 +321,15 @@ export class KeywordDetectionManager {
      */
     isKeywordModeActive() {
         return this.isActive;
+    }
+
+    /**
+     * Чи активний зараз об'єкт розпізнавання (бразуерний стан)
+     */
+    isRecognitionActive() {
+        // На жаль, Web Speech API не надає офіційного прапорця "running".
+        // Опираємось на евристики: якщо ми щойно стартували або у процесі рестарту.
+        // Додатково можна відслідковувати onstart/onend, виставляючи флаг.
+        return this._recognitionRunning === true;
     }
 }

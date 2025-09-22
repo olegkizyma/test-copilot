@@ -34,6 +34,39 @@ CORS(app)
 # Глобальні змінні для моделі
 whisper_model = None
 
+def is_valid_transcription(text: str, duration: float) -> bool:
+    """Проста валідація результату транскрипції.
+    Відсіюємо порожні, занадто короткі або підозрілі результати.
+    """
+    try:
+        if text is None:
+            return False
+        t = text.strip()
+        if not t:
+            return False
+        # Якщо запис був відносно довгим, а текст занадто короткий — відфільтровуємо
+        if duration is not None:
+            try:
+                d = float(duration)
+            except Exception:
+                d = 0.0
+        else:
+            d = 0.0
+        if d >= 1.0 and len(t) < 3:
+            return False
+        # Відфільтрувати суцільне повторення одного символу
+        if len(set(t)) <= 1:
+            return False
+        # Якщо текст довгий, але складається майже не з літер — підозріло
+        if len(t) >= 10:
+            letters = sum(1 for ch in t if ch.isalpha())
+            if letters / max(1, len(t)) < 0.3:
+                return False
+        return True
+    except Exception:
+        # У випадку помилки в валідації — краще пропустити текст
+        return True
+
 def load_whisper_model():
     """Завантаження моделі faster-whisper Large v3"""
     global whisper_model
@@ -90,6 +123,7 @@ def health():
             'status': 'ok',
             'model_loaded': model_loaded,
             'model_name': WHISPER_MODEL if model_loaded else None,
+            'model': WHISPER_MODEL if model_loaded else None,  # для фронтенд-сумісності
             'device': DEVICE,
             'compute_type': COMPUTE_TYPE,
             'timestamp': datetime.now().isoformat(),
