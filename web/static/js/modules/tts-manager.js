@@ -54,11 +54,15 @@ export class TTSManager {
         }
 
         try {
-            const { data } = await ttsClient.post('/tts', {
-                text,
-                voice,
-                return_audio: options.returnAudio || false,
-                ...options
+            const { data } = await ttsClient.request('/tts', {
+                method: 'POST',
+                body: JSON.stringify({
+                    text,
+                    voice,
+                    return_audio: options.returnAudio || false,
+                    ...options
+                }),
+                responseType: options.return_audio || options.responseType === 'blob' ? 'blob' : undefined
             });
 
             return data;
@@ -153,34 +157,76 @@ export class TTSManager {
             voice = TTS_CONFIG.defaultVoice;
         }
         
-        try {
-            this.logger.info(`Speaking for ${agent} (${voice}): ${text.substring(0, 50)}...`);
+        const maxRetries = TTS_CONFIG.maxRetries || 3;
+        let attempt = 0;
+        let lastError = null;
 
-            // Генеруємо аудіо з поверненням blob
-            this.logger.info(`Requesting TTS for ${agent} with return_audio=true`);
-            const response = await ttsClient.request('/tts', {
-                method: 'POST',
-                body: JSON.stringify({
-                    text,
-                    voice,
-                    return_audio: true
-                }),
-                responseType: 'blob'
-            });
-
-            this.logger.info(`Received TTS response, data type: ${typeof response.data}, size: ${response.data?.size || 'unknown'}`);
-            
-            // Відтворюємо аудіо з правильним voice для повідомлення
-            await this.playAudio(response.data, voice);
-
-        } catch (error) {
-            this.logger.error(`Speech failed for ${agent}`, error.message);
-            
-            // Fallback - сповіщаємо про "завершення" навіть при помилці
-            this.notifyPlaybackCompleted(voice);
-            
-            throw error;
+        this.logger.info(`Speaking for ${agent} (${voice}): ${text.substring(0, 80)}...`);
+        while (attempt <= maxRetries) {
+            try {
+                // Генеруємо аудіо з поверненням blob
+                this.logger.info(`Requesting TTS (attempt ${attempt + 1}/${maxRetries + 1})`);
+                const audioBlob = await this.synthesize(text, voice, { returnAudio: true, responseType: 'blob' });
+                this.logger.info(`Received TTS blob, size: ${audioBlob?.size || 'unknown'}`);
+                await this.playAudio(audioBlob, voice);
+                return; // success
+            } catch (error) {
+                lastError = error;
+                const statusText = error?.message || '';
+                const isServerError = /HTTP\s*5\d\d/i.test(statusText) || /Internal Server Error/i.test(statusText);
+                const shouldRetry = isServerError && attempt < maxRetries;
+                this.logger.error(`[TTS] Speech failed for ${agent} ${statusText}`);
+                if (shouldRetry) {
+                    const backoff = Math.min(1000 * Math.pow(2, attempt), 6000) + Math.floor(Math.random() * 250);
+                    this.logger.info(`Retrying TTS in ${backoff}ms...`);
+                    await new Promise(r => setTimeout(r, backoff));
+                    attempt++;
+                    continue;
+                }
+                break;
+            }
         }
+
+        // Фолбек: браузерний speechSynthesis, якщо доступний
+        try {
+            if ('speechSynthesis' in window && 'SpeechSynthesisUtterance' in window) {
+                await new Promise((resolve) => {
+                    try {
+                        const utter = new SpeechSynthesisUtterance(text);
+                        const pickVoice = () => {
+                            const voices = window.speechSynthesis.getVoices();
+                            const ua = voices.find(v => (v.lang || '').toLowerCase().startsWith('uk'));
+                            const ru = voices.find(v => (v.lang || '').toLowerCase().startsWith('ru'));
+                            const en = voices.find(v => (v.lang || '').toLowerCase().startsWith('en'));
+                            return ua || ru || en || voices[0];
+                        };
+                        const setVoice = () => {
+                            const v = pickVoice();
+                            if (v) utter.voice = v;
+                        };
+                        if (window.speechSynthesis.onvoiceschanged !== undefined) {
+                            const once = () => { window.speechSynthesis.onvoiceschanged = null; setVoice(); };
+                            window.speechSynthesis.onvoiceschanged = once;
+                        }
+                        setVoice();
+                        utter.onend = () => resolve();
+                        utter.onerror = () => resolve();
+                        // Emit TTS started/completed around browser TTS too
+                        try { window.dispatchEvent(new CustomEvent('atlas-tts-started', { detail: { agent: voice } })); } catch(_) {}
+                        window.speechSynthesis.speak(utter);
+                        utter.onend = () => {
+                            try { window.dispatchEvent(new CustomEvent('atlas-tts-completed', { detail: { agent: voice } })); } catch(_) {}
+                            resolve();
+                        };
+                    } catch (_) { resolve(); }
+                });
+            }
+        } catch (_) {}
+        
+        // Завершение для оркестратора (чтобы снять ожидание), даже при фолбэке/ошибке
+        try { await this.notifyPlaybackCompleted(voice); } catch(_) {}
+        // Пробрасываем последнюю ошибку для логики наверху, если нужно
+        if (lastError) throw lastError;
     }
 
     segmentText(text, maxLength = VOICE_CONFIG.maxSegmentLength) {

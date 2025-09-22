@@ -36,7 +36,10 @@ export class ApiClient {
             const contentType = response.headers.get('content-type');
             let data;
 
-            if (contentType && contentType.includes('application/json')) {
+            // Явний пріоритет responseType, якщо задано (наприклад, 'blob' для TTS)
+            if (options.responseType === 'blob') {
+                data = await response.blob();
+            } else if (contentType && contentType.includes('application/json')) {
                 data = await response.json();
             } else if (contentType && contentType.includes('audio/')) {
                 data = await response.blob();

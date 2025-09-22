@@ -336,8 +336,19 @@ export class KeywordDetectionManager {
             return false;
         }
 
+        // Идемпотентный старт: если уже активен
         if (this.isActive && !this.isRestarting) {
-            this.logger.warn('Keyword detection already active');
+            if (!this.isRecognitionActive()) {
+                const guardReason = this.getGuardReason();
+                if (guardReason) {
+                    this.logger.debug(`Delayed re-start due to: ${guardReason}`);
+                    setTimeout(() => this._internalStart(), 300);
+                } else {
+                    try { this.recognition.start(); } catch (_) {}
+                }
+            } else {
+                this.logger.debug('Keyword detection already active');
+            }
             return true;
         }
 
@@ -351,13 +362,13 @@ export class KeywordDetectionManager {
             if (!this.isRecognitionActive()) {
                 const guardReason = this.getGuardReason();
                 if (guardReason) {
-                    this.logger.warn(`Delayed start due to: ${guardReason}`);
+                    this.logger.debug(`Delayed start due to: ${guardReason}`);
                     setTimeout(() => this._internalStart(), 300);
                 } else {
                     this.recognition.start();
                 }
             } else {
-                this.logger.warn('Recognition already started by the browser');
+                this.logger.debug('Recognition already started by the browser');
             }
             this.logger.info('🎯 Keyword detection mode activated');
             return true;

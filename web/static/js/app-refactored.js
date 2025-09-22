@@ -55,6 +55,26 @@ class AtlasApp {
         this.managers.voiceControl = new VoiceControlSystem(this.managers.chat);
         await this.managers.voiceControl.initialize();
         
+        // Автоматично активуємо СИНІЙ режим (очікування "Атлас"), щоб ключове слово працювало одразу
+        try {
+            const mic = this.managers.voiceControl.getMicrophoneManager?.();
+            if (mic && !mic.isKeywordModeActive()) {
+                // Невелика затримка, щоб DOM і браузерні сервіси стабілізувались
+                setTimeout(async () => {
+                    try {
+                        await mic.activateBlueMode();
+                        this.logger.info('🔵 Keyword detection auto-armed on startup');
+                        // Оновимо мітку кнопки, якщо вона є
+                        this._updateVoiceToggleLabel?.();
+                    } catch (e) {
+                        this.logger.warn('Failed to auto-activate BLUE mode:', e?.message || e);
+                    }
+                }, 300);
+            }
+        } catch (e) {
+            this.logger.warn('Voice auto-arm skipped:', e?.message || e);
+        }
+        
         // Ініціалізуємо Status Manager (якщо потрібен)
         if (document.getElementById('status-container')) {
             this.logger.info('Status container found - initializing basic status display');
@@ -86,6 +106,9 @@ class AtlasApp {
         
         // Налаштовуємо контроли TTS
         this.setupTTSControls();
+        
+        // Налаштовуємо голосові контроли (перемикач BLUE режиму)
+        this.setupVoiceControls();
         
         // Налаштовуємо клавіатурні скорочення
         this.setupKeyboardShortcuts();
@@ -172,6 +195,45 @@ class AtlasApp {
             const currentMode = this.managers.chat.getTTSMode();
             ttsModeToggle.textContent = currentMode === 'quick' ? 
                 '⚡ Швидкий режим' : '🎵 Стандартний режим';
+        }
+    }
+
+    setupVoiceControls() {
+        const voiceToggle = document.getElementById('voice-toggle');
+        const getMic = () => this.managers.voiceControl?.getMicrophoneManager?.();
+
+        // Внутрішній хелпер для оновлення напису кнопки
+        this._updateVoiceToggleLabel = () => {
+            if (!voiceToggle) return;
+            try {
+                const mic = getMic();
+                const active = !!mic?.isKeywordModeActive?.();
+                voiceToggle.title = active ? 'СИНІЙ режим активний — очікування «Атлас». Клік — вимкнути' : 'Клік — увімкнути очікування «Атлас» (СИНІЙ режим)';
+                voiceToggle.querySelector('.btn-text').textContent = active ? '🔵' : '🔊';
+            } catch (_) {}
+        };
+
+        if (voiceToggle) {
+            voiceToggle.addEventListener('click', async () => {
+                const mic = getMic();
+                if (!mic) return;
+                try {
+                    if (mic.isKeywordModeActive()) {
+                        await mic.deactivateBlueMode();
+                    } else {
+                        await mic.activateBlueMode();
+                    }
+                } catch (e) {
+                    this.logger.error('Voice toggle error:', e?.message || e);
+                } finally {
+                    this._updateVoiceToggleLabel();
+                }
+            });
+
+            // Встановлюємо початковий стан
+            this._updateVoiceToggleLabel();
+        } else {
+            this.logger.debug('voice-toggle button not found (optional)');
         }
     }
 

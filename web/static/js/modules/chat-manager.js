@@ -205,7 +205,7 @@ export class ChatManager {
     async streamFromOrchestrator(message) {
         this.logger.info(`Streaming message to orchestrator: ${message.substring(0, 50)}...`);
 
-        const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         this.currentSession = sessionId;
 
         return new Promise((resolve, reject) => {
@@ -232,6 +232,34 @@ export class ChatManager {
         });
     }
 
+    async streamFromOrchestratorWithOptions(message, options = {}) {
+        this.logger.info(`Streaming (opts) to orchestrator: ${message.substring(0, 50)}...`);
+
+    const sessionId = this.currentSession || `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        this.currentSession = sessionId;
+
+        return new Promise((resolve, reject) => {
+            orchestratorClient.stream(
+                '/chat/stream',
+                { 
+                    message, 
+                    sessionId,
+                    enableTTS: this.ttsManager.isEnabled(),
+                    ...options
+                },
+                (data) => this.handleStreamMessage(data),
+                (error) => {
+                    this.logger.error('Stream error', error.message);
+                    reject(error);
+                },
+                () => {
+                    this.logger.info('Stream completed');
+                    resolve();
+                }
+            );
+        });
+    }
+
     handleStreamMessage(data) {
         switch (data.type) {
             case 'agent_message':
@@ -248,6 +276,27 @@ export class ChatManager {
                 break;
             default:
                 this.logger.debug('Unknown stream message type', data.type);
+        }
+    }
+
+    // Session pause/resume helpers
+    async pauseSession() {
+        if (!this.currentSession) return;
+        try {
+            await orchestratorClient.post('/session/pause', { sessionId: this.currentSession });
+            this.logger.info(`Session paused: ${this.currentSession}`);
+        } catch (e) {
+            this.logger.warn('Failed to pause session:', e?.message || e);
+        }
+    }
+
+    async resumeSession() {
+        if (!this.currentSession) return;
+        try {
+            await orchestratorClient.post('/session/resume', { sessionId: this.currentSession });
+            this.logger.info(`Session resumed: ${this.currentSession}`);
+        } catch (e) {
+            this.logger.warn('Failed to resume session:', e?.message || e);
         }
     }
 

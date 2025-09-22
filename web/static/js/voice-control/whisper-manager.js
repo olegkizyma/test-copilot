@@ -13,6 +13,8 @@ export class WhisperManager {
         this.mediaRecorder = null;
         this.audioChunks = [];
         this.isRecording = false;
+    this._recorderState = 'inactive'; // mirror for safety
+    this._initInProgress = false;
         
         this.logger.info('Whisper Manager initialized');
     }
@@ -61,7 +63,13 @@ export class WhisperManager {
             };
 
             this.mediaRecorder.onstop = () => {
+                this._recorderState = 'inactive';
+                this.isRecording = false;
                 this.logger.info('🎤 Recording stopped');
+            };
+
+            this.mediaRecorder.onstart = () => {
+                this._recorderState = 'recording';
             };
 
             this.logger.info('🎤 Media recording initialized');
@@ -73,11 +81,38 @@ export class WhisperManager {
         }
     }
 
+    async ensureMediaRecorderReady() {
+        if (this.mediaRecorder && this.mediaRecorder.state === 'inactive') {
+            return true;
+        }
+        if (!this.mediaRecorder) {
+            if (this._initInProgress) {
+                // wait a bit for parallel init
+                await new Promise(res => setTimeout(res, 50));
+                if (this.mediaRecorder) return true;
+            }
+            this._initInProgress = true;
+            try {
+                return await this.initializeRecording();
+            } finally {
+                this._initInProgress = false;
+            }
+        }
+        // If state is 'recording' unexpectedly, attempt to stop and recreate
+        if (this.mediaRecorder?.state === 'recording') {
+            try { this.mediaRecorder.stop(); } catch (_) {}
+            await new Promise(res => setTimeout(res, 50));
+            try { this.cleanup(); } catch (_) {}
+            return await this.initializeRecording();
+        }
+        return true;
+    }
+
     /**
      * Початок запису аудіо
      */
     async startRecording() {
-        if (this.isRecording) {
+        if (this.isRecording || this.mediaRecorder?.state === 'recording') {
             this.logger.warn('Recording already in progress');
             return false;
         }
@@ -93,8 +128,19 @@ export class WhisperManager {
 
         try {
             this.audioChunks = [];
-            this.mediaRecorder.start();
+            // Інколи браузер кидає NotSupportedError/InvalidStateError — пробуємо ре-ініт/повтор
+            try {
+                this.mediaRecorder.start();
+            } catch (err) {
+                this.logger.warn('mediaRecorder.start() failed, attempting recovery:', err?.name || err);
+                // Recovery path
+                try { this.cleanup(); } catch (_) {}
+                const ok = await this.initializeRecording();
+                if (!ok) throw err;
+                this.mediaRecorder.start();
+            }
             this.isRecording = true;
+            this._recorderState = 'recording';
             this.logger.info('🎤 Recording started');
             return true;
         } catch (error) {
@@ -107,27 +153,49 @@ export class WhisperManager {
      * Зупинка запису та отримання аудіо
      */
     async stopRecording() {
-        if (!this.isRecording || !this.mediaRecorder) {
-            this.logger.warn('No active recording to stop');
+        if (!this.mediaRecorder) {
+            this.logger.warn('No MediaRecorder to stop');
             return null;
         }
 
+        // Якщо вже не пишемо — все одно спробуємо сформувати blob
+        if (!this.isRecording && this.mediaRecorder.state !== 'recording') {
+            if (this.audioChunks.length === 0) {
+                this.logger.warn('No audio data recorded');
+                return null;
+            }
+            const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
+            this.logger.info(`🎤 Returning last audio buffer, size: ${audioBlob.size} bytes`);
+            return audioBlob;
+        }
+
         return new Promise((resolve) => {
-            this.mediaRecorder.onstop = () => {
+            const finalize = () => {
                 this.isRecording = false;
-                
+                this._recorderState = 'inactive';
                 if (this.audioChunks.length === 0) {
                     this.logger.warn('No audio data recorded');
                     resolve(null);
                     return;
                 }
-
                 const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
                 this.logger.info(`🎤 Recording stopped, audio size: ${audioBlob.size} bytes`);
                 resolve(audioBlob);
             };
 
-            this.mediaRecorder.stop();
+            try {
+                // restore default onstop, then add a once handler
+                this.mediaRecorder.onstop = finalize;
+                if (this.mediaRecorder.state === 'recording') {
+                    this.mediaRecorder.stop();
+                } else {
+                    // already inactive
+                    finalize();
+                }
+            } catch (e) {
+                this.logger.warn('Error on mediaRecorder.stop(), forcing finalize:', e);
+                finalize();
+            }
         });
     }
 

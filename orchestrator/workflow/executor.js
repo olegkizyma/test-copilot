@@ -13,6 +13,7 @@ import { logMessage, sendToTTSAndWait, generateMessageId } from '../utils/helper
 import logger from '../utils/logger.js';
 import telemetry from '../utils/telemetry.js';
 import errorHandler from '../errors/error-handler.js';
+import pauseState from '../state/pause-state.js';
 
 // Семафор для запобігання одночасному запуску агентів
 const activeAgentSessions = new Set();
@@ -30,7 +31,7 @@ export async function checkWorkflowCondition(conditionName, data) {
 }
 
 // STEP-BY-STEP WORKFLOW - використовує конфігурацію з stages.js
-export async function executeStepByStepWorkflow(userMessage, session, res) {
+export async function executeStepByStepWorkflow(userMessage, session, res, options = {}) {
     // Додаємо повідомлення користувача
     session.history.push({
         role: 'user',
@@ -41,6 +42,58 @@ export async function executeStepByStepWorkflow(userMessage, session, res) {
     const workflowStart = Date.now();
     logger.info(`Starting step-by-step workflow following WORKFLOW_STAGES configuration`);
     
+    // -1. Якщо це stop-dispatch — запускаємо системний роутер після зупинки
+    if (options.stopDispatch === true) {
+        try {
+            const stopRouterPrompts = await import('../../prompts/system/stage_minus1_stop_router.js');
+            const systemPrompt = stopRouterPrompts.SYSTEM_STOP_ROUTER_SYSTEM_PROMPT;
+            const userPrompt = stopRouterPrompts.SYSTEM_STOP_ROUTER_USER_PROMPT(userMessage);
+            const stopResp = await executeAgentStageStepByStep(
+                'system',
+                'stage-1_stop_router',
+                systemPrompt,
+                userPrompt,
+                session,
+                res,
+                { enableTools: false }
+            );
+            // Не зберігаємо як чат-пам'ять
+            if (stopResp) stopResp.memory = { retain: false, type: 'system' };
+            session.history.push(stopResp);
+            let route = { next_stage: 0, agent: 'atlas', reason: 'default_chat' };
+            try { route = JSON.parse((stopResp?.content || '').replace(/^\[SYSTEM\]\s*/, '').trim()); } catch {}
+            // Якщо обрано stage 0 chat — відповімо і завершимо
+            if (route.next_stage === 0) {
+                const a0 = await import('../../prompts/atlas/stage0_chat.js');
+                const promptsChat = {
+                    systemPrompt: a0.ATLAS_STAGE0_CHAT_SYSTEM_PROMPT,
+                    userPrompt: a0.ATLAS_STAGE0_CHAT_USER_PROMPT(userMessage)
+                };
+                const chatResp = await executeAgentStageStepByStep(
+                    'atlas', 'stage0_chat', promptsChat.systemPrompt, promptsChat.userPrompt, session, res, { enableTools: false }
+                );
+                session.history.push(chatResp);
+                // Завершуємо, бо це відповідь у чаті після зупинки
+                if (!res.writableEnded) {
+                    res.write(JSON.stringify({ type: 'workflow_completed', data: { success: true, completed: true, mode: 'chat', session: { id: session.id, totalStages: session.history.length } } })+'\n');
+                    res.end();
+                }
+                return;
+            }
+            // Інакше — перескочимо до конкретного етапу за вибором роутера
+            session.currentStage = route.next_stage;
+        } catch (e) {
+            logger.error(`Stop router failed: ${e.message}`);
+            // fallback: просто відповідаємо в чаті
+            const a0 = await import('../../prompts/atlas/stage0_chat.js');
+            const promptsChat = { systemPrompt: a0.ATLAS_STAGE0_CHAT_SYSTEM_PROMPT, userPrompt: a0.ATLAS_STAGE0_CHAT_USER_PROMPT(userMessage) };
+            const chatResp = await executeAgentStageStepByStep('atlas','stage0_chat',promptsChat.systemPrompt,promptsChat.userPrompt,session,res,{ enableTools: false });
+            session.history.push(chatResp);
+            if (!res.writableEnded) { res.write(JSON.stringify({ type: 'workflow_completed', data: { success: true, completed: true, mode: 'chat', session: { id: session.id, totalStages: session.history.length } } })+'\n'); res.end(); }
+            return;
+        }
+    }
+
     // 0. Попередній системний вибір режиму (класифікація chat/task) з урахуванням попереднього режиму
     try {
         const modeStageCfg = WORKFLOW_STAGES.find(s => s.stage === 0 && s.agent === 'system');
@@ -142,9 +195,29 @@ export async function executeStepByStepWorkflow(userMessage, session, res) {
         }
     }
 
+    // Якщо сесія поставлена на паузу — не виконуємо подальші етапи (дозволяємо лише чат/стоп-роутер)
+    if (pauseState.isPaused(session.id)) {
+        logMessage('info', `Session ${session.id} is paused — skipping task stages`);
+        if (!res.writableEnded) {
+            res.write(JSON.stringify({ type: 'status_update', data: { agent: 'system', stage: 'paused', status: 'awaiting_resume' } }) + '\n');
+            res.write(JSON.stringify({ type: 'workflow_completed', data: { success: true, completed: true, mode: 'paused', session: { id: session.id } } }) + '\n');
+            res.end();
+        }
+        return;
+    }
+
     // Виконуємо етапи згідно конфігурації WORKFLOW_STAGES (починаючи від stage 1)
     for (const stageConfig of WORKFLOW_STAGES) {
         if (stageConfig.stage === 0) continue; // вже виконано вище
+        if (pauseState.isPaused(session.id)) {
+            logMessage('info', `Pausing before stage ${stageConfig.stage} for session ${session.id}`);
+            if (!res.writableEnded) {
+                res.write(JSON.stringify({ type: 'status_update', data: { agent: 'system', stage: 'paused', status: 'awaiting_resume' } }) + '\n');
+                res.write(JSON.stringify({ type: 'workflow_completed', data: { success: true, completed: true, mode: 'paused', session: { id: session.id } } }) + '\n');
+                res.end();
+            }
+            return;
+        }
         logMessage('info', `Processing stage ${stageConfig.stage}: ${stageConfig.agent} - ${stageConfig.name}`);
         
         // Перевіряємо чи потрібен цей етап

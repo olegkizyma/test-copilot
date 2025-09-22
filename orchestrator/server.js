@@ -18,6 +18,7 @@ import logger from './utils/logger.js';
 import errorHandler from './errors/error-handler.js';
 import telemetry from './utils/telemetry.js';
 import healthMonitor from './monitoring/health-monitor.js';
+import pauseState from './state/pause-state.js';
 
 const app = express();
 const PORT = process.env.ORCH_PORT || 5101;
@@ -107,6 +108,23 @@ app.get('/workflow', (req, res) => {
     });
 });
 
+// Pause/resume endpoints per session
+app.post('/session/pause', (req, res) => {
+    const { sessionId } = req.body || {};
+    if (!sessionId) return res.status(400).json({ error: 'sessionId required' });
+    pauseState.setPaused(sessionId, true);
+    logMessage('info', `Session paused: ${sessionId}`);
+    res.json({ success: true, paused: true });
+});
+
+app.post('/session/resume', (req, res) => {
+    const { sessionId } = req.body || {};
+    if (!sessionId) return res.status(400).json({ error: 'sessionId required' });
+    pauseState.setPaused(sessionId, false);
+    logMessage('info', `Session resumed: ${sessionId}`);
+    res.json({ success: true, paused: false });
+});
+
 // Fallback LLM models endpoint
 app.get('/v1/models', (req, res) => {
     res.json({ 
@@ -155,7 +173,7 @@ app.post('/v1/chat/completions', async (req, res) => {
 
 // НОВИЙ STREAMING ENDPOINT - step-by-step виконання
 app.post('/chat/stream', async (req, res) => {
-    const { message, sessionId = 'default' } = req.body;
+    const { message, sessionId = 'default', stopDispatch = false } = req.body;
     
     if (!message?.trim()) {
         return res.status(400).json({ error: 'Message is required' });
@@ -191,7 +209,7 @@ app.post('/chat/stream', async (req, res) => {
     
     // Запускаємо step-by-step workflow
     try {
-        await executeStepByStepWorkflow(message, session, res);
+        await executeStepByStepWorkflow(message, session, res, { stopDispatch });
     } catch (error) {
         logMessage('error', `Step-by-step workflow failed: ${error.message}`);
         if (!res.headersSent) {
