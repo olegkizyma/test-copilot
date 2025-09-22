@@ -134,7 +134,7 @@ export class WhisperManager {
     /**
      * Транскрипція аудіо через Whisper сервіс
      */
-    async transcribeAudio(audioBlob, language = 'uk') {
+    async transcribeAudio(audioBlob, language = 'uk', options = {}) {
         if (!this.isServiceAvailable) {
             await this.checkServiceAvailability();
             if (!this.isServiceAvailable) {
@@ -143,12 +143,13 @@ export class WhisperManager {
         }
 
         try {
-            this.logger.info(`🤖 Transcribing audio (${audioBlob.size} bytes) with language: ${language}`);
+            const { useVAD = true } = options;
+            this.logger.info(`🤖 Transcribing audio (${audioBlob.size} bytes) with language: ${language}, use_vad: ${useVAD}`);
             
             const formData = new FormData();
             formData.append('audio', audioBlob, 'recording.webm');
             formData.append('language', language);
-            formData.append('use_vad', 'false');  // Отключаем VAD для тестирования
+            formData.append('use_vad', useVAD ? 'true' : 'false');  // Вмикаємо VAD за замовчуванням
 
             const response = await fetch(`${this.serviceUrl}/transcribe`, {
                 method: 'POST',
@@ -209,7 +210,7 @@ export class WhisperManager {
                     if (!audioBlob) {
                         throw new Error('No audio recorded');
                     }
-                    return await this.transcribeAudio(audioBlob, language);
+                    return await this.transcribeAudio(audioBlob, language, { useVAD: true });
                 }
             };
 

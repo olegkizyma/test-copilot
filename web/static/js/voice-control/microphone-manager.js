@@ -152,8 +152,20 @@ export class MicrophoneButtonManager {
 
         // Спроба через TTSManager
         try {
+            // На час TTS ставимо детектор на паузу, щоб уникнути зворотного зв’язку та помилок
+            const shouldResumeKeyword = this.keywordDetector?.isKeywordModeActive?.() || this.currentState === VOICE_CONFIG.BUTTON_STATES.BLUE_MODE;
+            if (shouldResumeKeyword) {
+                try {
+                    this.logger.info('⏸️ Pausing keyword detector during TTS');
+                    this.keywordDetector.stop();
+                } catch (_) {}
+            }
             if (this.chatManager && this.chatManager.ttsManager && this.chatManager.ttsManager.isEnabled()) {
                 await this.chatManager.ttsManager.speak(text, 'atlas');
+                // Після зовнішнього TTS нічого не робимо — логіка відновлення є у startRecordingAfterKeyword
+                if (shouldResumeKeyword && this.currentState === VOICE_CONFIG.BUTTON_STATES.BLUE_MODE) {
+                    this.logger.debug('🔁 Keyword detector will be restarted by post-TTS flow');
+                }
                 return;
             }
         } catch (e) {
@@ -215,6 +227,25 @@ export class MicrophoneButtonManager {
 
         this.keywordDetector.setSpeechResultCallback((transcript) => {
             this.handleKeywordModeSpeech(transcript);
+        });
+
+        // Глобально реагуємо на TTS, щоб уникнути само-активації від голосу АТЛАС
+        window.addEventListener('atlas-tts-started', () => {
+            try {
+                if (this.isKeywordModeActive()) {
+                    this.logger.info('⏸️ TTS started — pausing keyword detector');
+                    this.keywordDetector.stop();
+                }
+            } catch (_) {}
+        });
+
+        window.addEventListener('atlas-tts-completed', () => {
+            try {
+                if (this.currentState === VOICE_CONFIG.BUTTON_STATES.BLUE_MODE && !this.keywordDetector.isKeywordModeActive()) {
+                    this.logger.info('▶️ TTS completed — rearming keyword detector');
+                    this.keywordDetector.start();
+                }
+            } catch (_) {}
         });
     }
 
@@ -364,10 +395,11 @@ export class MicrophoneButtonManager {
                 return;
             }
 
-            // Налаштовуємо автоматичну зупинку через 10 секунд або по повторному кліку
+            // Налаштовуємо автоматичну зупинку через конфігурований час або по повторному кліку
+            const maxMs = (VOICE_CONFIG.RECORDING_WINDOWS && VOICE_CONFIG.RECORDING_WINDOWS.shortClickMaxMs) || 10000;
             this.whisperRecordingTimeout = setTimeout(async () => {
                 await this.stopWhisperRecording();
-            }, 10000);
+            }, maxMs);
 
         } catch (error) {
             this.logger.error('Error starting Whisper recording:', error);
@@ -604,9 +636,10 @@ export class MicrophoneButtonManager {
                 throw new Error('Failed to start Whisper recording');
             }
 
+            const maxMs = (VOICE_CONFIG.RECORDING_WINDOWS && VOICE_CONFIG.RECORDING_WINDOWS.keywordMaxMs) || 6000;
             this.keywordWhisperTimeout = setTimeout(async () => {
                 await this.stopWhisperRecordingForKeyword();
-            }, 10000);
+            }, maxMs);
 
         } catch (error) {
             this.logger.error('Error starting Whisper recording after keyword:', error);
@@ -632,11 +665,22 @@ export class MicrophoneButtonManager {
             }
 
             try {
-                const result = await this.whisperManager.transcribeAudio(audioBlob, 'uk');
+                // Увімкнемо миттєве переозброєння детектора під час транскрипції, якщо дозволено
+                if (VOICE_CONFIG.TRANSCRIPTION_BEHAVIOR?.rearmKeywordDuringTranscription) {
+                    try {
+                        this.setState(VOICE_CONFIG.BUTTON_STATES.BLUE_MODE);
+                        this.keywordDetector.start();
+                        this.logger.debug('🔁 Keyword detector re-armed during transcription');
+                    } catch (_) {}
+                }
+
+                const result = await this.whisperManager.transcribeAudio(audioBlob, 'uk', { useVAD: true });
                 this.handleWhisperResult(result, 'keyword');
-                // Повертаємось до BLUE режиму і перезапускаємо детекцію
-                this.setState(VOICE_CONFIG.BUTTON_STATES.BLUE_MODE);
-                this.keywordDetector.start();
+                // Якщо ми ще не у BLUE режимі (у разі відключеної поведінки), повертаємось
+                if (!this.isKeywordModeActive()) {
+                    this.setState(VOICE_CONFIG.BUTTON_STATES.BLUE_MODE);
+                    this.keywordDetector.start();
+                }
             } catch (transcribeError) {
                 this.logger.error('Transcription failed after keyword:', transcribeError);
                 // Додати рядок у результати як помилку/відфільтрований

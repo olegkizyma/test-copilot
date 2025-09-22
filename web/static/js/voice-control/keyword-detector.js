@@ -14,6 +14,7 @@ export class KeywordDetectionManager {
         this.isInitialized = false;
         this._recognitionRunning = false;
         this._manualStop = false;
+        this._listenersBound = false;
         this.onKeywordDetected = null;
         this.onSpeechResult = null;
         this.noSpeechCount = 0;
@@ -22,6 +23,11 @@ export class KeywordDetectionManager {
         this.isRestarting = false;
         this.baseRestartDelay = 100;
         this.maxRestartDelay = 10000; // максимум 10 секунд
+        // Додаткові лічильники та флаги для мережевих збоїв/кулдаунів
+        this.networkErrorCount = 0;
+        this.maxNetworkBackoff = 30000; // до 30 секунд
+        this.cooldownUntil = 0;
+        this.lastErrorType = null; // 'no-speech' | 'network' | інше | null
         
         this.logger.info('Keyword Detection Manager initialized');
     }
@@ -48,6 +54,7 @@ export class KeywordDetectionManager {
         this.recognition.maxAlternatives = VOICE_CONFIG.SPEECH_RECOGNITION.maxAlternatives;
 
         this.setupEventListeners();
+        this.bindGlobalGuards();
         this.isInitialized = true;
         return true;
     }
@@ -59,6 +66,9 @@ export class KeywordDetectionManager {
         this.recognition.onstart = () => {
             this._recognitionRunning = true;
             this.logger.info('🎤 Keyword detection started');
+            // При успішному старті скидаємо помилки мережі/кулдауни
+            this.lastErrorType = null;
+            this.networkErrorCount = 0;
         };
 
         this.recognition.onresult = (event) => {
@@ -94,8 +104,10 @@ export class KeywordDetectionManager {
             // no-speech — нормальный сценарий для пауз, уводим в debug
             if (event.error === 'no-speech') {
                 this.logger.debug('Speech recognition: no-speech');
+                this.lastErrorType = 'no-speech';
             } else {
                 this.logger.error(`Speech recognition error: ${event.error}`);
+                this.lastErrorType = event.error;
             }
             // Якщо була ручна зупинка, ігноруємо помилки
             if (this._manualStop) {
@@ -111,6 +123,15 @@ export class KeywordDetectionManager {
                 if (this.noSpeechCount >= this.maxNoSpeechAttempts) {
                     this.logger.debug('Too many consecutive no-speech events, increasing restart delay');
                 }
+            } else if (event.error === 'network') {
+                // Обробка мережевих збоїв: збільшуємо backoff і не спамимо рестартами
+                this.networkErrorCount++;
+                this.noSpeechCount = 0; // не враховуємо no-speech при мережевих
+                const delay = this.calculateNetworkBackoff();
+                const now = Date.now();
+                this.cooldownUntil = Math.max(this.cooldownUntil, now + delay);
+                const online = this.isOnline();
+                this.logger.warn(`Network error (${this.networkErrorCount}). ${online ? 'Online' : 'Offline'}; cooldown for ${delay}ms (until ${new Date(this.cooldownUntil).toLocaleTimeString()}).`);
             } else {
                 // Скидаємо лічильник послідовних помилок для інших помилок
                 this.noSpeechCount = 0;
@@ -123,24 +144,74 @@ export class KeywordDetectionManager {
             this.logger.info('🎤 Keyword detection ended');
             
             // Автоматично перезапускаємо якщо режим активний і не в процесі перезапуску
-            if (this.isActive && !this.isRestarting && !this._manualStop) {
-                this.isRestarting = true;
-                
-                // Експоненціальна затримка на основі загальної кількості помилок
-                const restartDelay = this.calculateRestartDelay();
-                
-                this.logger.info(`⏳ Restarting in ${restartDelay}ms (no-speech count: ${this.noSpeechCount})`);
-                
-                setTimeout(() => {
-                    if (this.isActive && !this._manualStop) { // Перевіряємо знову перед перезапуском
-                        this.isRestarting = false;
-                        this._internalStart();
-                    } else {
-                        this.isRestarting = false;
-                    }
-                }, restartDelay);
+            if (this.isActive && !this._manualStop) {
+                const guardReason = this.getGuardReason();
+                if (guardReason) {
+                    this.logger.warn(`⏸️ Restart blocked: ${guardReason}`);
+                    // Спробуємо ще раз після невеликої паузи
+                    setTimeout(() => this.tryRestart(), 1000);
+                    return;
+                }
+                this.tryRestart();
             }
         };
+    }
+
+    bindGlobalGuards() {
+        if (this._listenersBound) return;
+        this._listenersBound = true;
+        window.addEventListener('online', () => {
+            this.logger.info('🌐 Browser is online');
+            // Знімаємо кулдаун і пробуємо перезапустити, якщо активний режим
+            this.cooldownUntil = 0;
+            if (this.isActive && !this.isRecognitionActive()) {
+                setTimeout(() => this.tryRestart(), 500);
+            }
+        });
+        window.addEventListener('offline', () => {
+            this.logger.warn('🌐 Browser is offline — pausing restarts');
+        });
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                this.logger.debug('👁️ Tab visible');
+                if (this.isActive && !this.isRecognitionActive()) {
+                    // невелика пауза, щоб браузер стабілізувався
+                    setTimeout(() => this.tryRestart(), 300);
+                }
+            } else {
+                this.logger.debug('👁️ Tab hidden — recognition may pause');
+            }
+        });
+    }
+
+    isOnline() {
+        return typeof navigator !== 'undefined' ? (navigator.onLine !== false) : true;
+    }
+
+    getGuardReason() {
+        if (this.isRestarting) return 'already restarting';
+        if (!this.isOnline()) return 'browser offline';
+        if (Date.now() < this.cooldownUntil) return 'cooldown active';
+        if (document && document.visibilityState === 'hidden') return 'tab hidden';
+        return null;
+    }
+
+    tryRestart() {
+        if (!this.isActive || this._manualStop) return;
+        const guardReason = this.getGuardReason();
+        if (guardReason) {
+            this.logger.debug(`Restart skipped: ${guardReason}`);
+            return;
+        }
+        this.isRestarting = true;
+        const restartDelay = this.calculateAdaptiveRestartDelay();
+        this.logger.info(`⏳ Restarting in ${restartDelay}ms (reason: ${this.lastErrorType || 'normal'}, no-speech: ${this.noSpeechCount}, network: ${this.networkErrorCount})`);
+        setTimeout(() => {
+            this.isRestarting = false;
+            if (this.isActive && !this._manualStop) {
+                this._internalStart();
+            }
+        }, restartDelay);
     }
 
     /**
@@ -193,16 +264,30 @@ export class KeywordDetectionManager {
      * Розрахунок адаптивної затримки перезапуску
      */
     calculateRestartDelay() {
-        // Базова затримка для перших спроб
-        if (this.noSpeechCount < this.maxNoSpeechAttempts) {
-            return this.baseRestartDelay;
-        }
-        
-        // Експоненціальна затримка для послідовних помилок
+        // Залишено для зворотньої сумісності: базуємось на no-speech
+        if (this.noSpeechCount < this.maxNoSpeechAttempts) return this.baseRestartDelay;
         const multiplier = Math.min(this.noSpeechCount - this.maxNoSpeechAttempts + 1, 6); // Максимум 2^6
         const delay = this.baseRestartDelay * Math.pow(2, multiplier);
-        
         return Math.min(delay, this.maxRestartDelay);
+    }
+
+    calculateNetworkBackoff() {
+        const base = 1000; // 1s
+        const multiplier = Math.min(this.networkErrorCount, 6); // до 64x
+        const jitter = Math.floor(Math.random() * 250);
+        const delay = base * Math.pow(2, multiplier) + jitter;
+        return Math.min(delay, this.maxNetworkBackoff);
+    }
+
+    calculateAdaptiveRestartDelay() {
+        if (this.lastErrorType === 'network') {
+            return this.calculateNetworkBackoff();
+        }
+        if (this.lastErrorType === 'no-speech') {
+            return this.calculateRestartDelay();
+        }
+        // Інші помилки — помірна затримка
+        return 500 + Math.floor(Math.random() * 300);
     }
 
     /**
@@ -218,6 +303,11 @@ export class KeywordDetectionManager {
             // Не запускати, якщо вже запущено
             if (this.isRecognitionActive()) {
                 this.logger.warn('Recognition is already active, skipping start call.');
+                return false;
+            }
+            const guardReason = this.getGuardReason();
+            if (guardReason) {
+                this.logger.debug(`Start blocked: ${guardReason}`);
                 return false;
             }
             this.recognition.start();
@@ -256,8 +346,16 @@ export class KeywordDetectionManager {
             this.isRestarting = false;
             this.noSpeechCount = 0; // Скидаємо лічильник при ручному запуску
             this.totalNoSpeechErrors = 0; // Скидаємо загальний лічільник
+            this.networkErrorCount = 0;
+            this.cooldownUntil = 0;
             if (!this.isRecognitionActive()) {
-                this.recognition.start();
+                const guardReason = this.getGuardReason();
+                if (guardReason) {
+                    this.logger.warn(`Delayed start due to: ${guardReason}`);
+                    setTimeout(() => this._internalStart(), 300);
+                } else {
+                    this.recognition.start();
+                }
             } else {
                 this.logger.warn('Recognition already started by the browser');
             }
@@ -280,6 +378,9 @@ export class KeywordDetectionManager {
         this.isRestarting = false;
         this.noSpeechCount = 0;
         this.totalNoSpeechErrors = 0;
+        this.networkErrorCount = 0;
+        this.cooldownUntil = 0;
+        this.lastErrorType = null;
         
         if (this.recognition) {
             try {

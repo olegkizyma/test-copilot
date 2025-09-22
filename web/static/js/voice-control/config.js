@@ -45,6 +45,17 @@ export const VOICE_CONFIG = {
         clickTimeout: 300
     },
     
+    // Вікна запису (максимальні тривалості)
+    RECORDING_WINDOWS: {
+        keywordMaxMs: 6000,   // максимум 6с після ключового слова (швидше повертаємося до очікування)
+        shortClickMaxMs: 10000 // максимум 10с для короткого кліку
+    },
+    
+    // Поведінка обробки/переозброєння
+    TRANSCRIPTION_BEHAVIOR: {
+        rearmKeywordDuringTranscription: true // у BLUE режимі відновлювати детектор відразу після зупинки запису, не чекаючи транскрипцію
+    },
+    
     // Налаштування Whisper
     WHISPER_CONFIG: {
         model: 'whisper-1', // або 'large-v3' коли буде доступний

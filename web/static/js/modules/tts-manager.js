@@ -81,6 +81,10 @@ export class TTSManager {
                 URL.revokeObjectURL(audioUrl);
                 this.currentAudio = null;
                 this.logger.info(`Audio playback completed for ${agent}`);
+                // Emit DOM event about TTS completion
+                try {
+                    window.dispatchEvent(new CustomEvent('atlas-tts-completed', { detail: { agent } }));
+                } catch (_) {}
                 
                 // Сповіщаємо orchestrator про завершення
                 this.notifyPlaybackCompleted(agent);
@@ -105,6 +109,10 @@ export class TTSManager {
 
             // Запускаємо відтворення
             this.logger.info(`Starting audio playback for ${agent}`);
+            // Emit DOM event about TTS start
+            try {
+                window.dispatchEvent(new CustomEvent('atlas-tts-started', { detail: { agent } }));
+            } catch (_) {}
             audio.play().catch((playError) => {
                 URL.revokeObjectURL(audioUrl);
                 this.currentAudio = null;

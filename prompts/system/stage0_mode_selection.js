@@ -10,12 +10,19 @@ Task: Decide if the message is casual conversation (chat) or a request to perfor
 Return ONLY valid JSON with this exact shape:
 {"mode":"chat"|"task","confidence": number 0.0-1.0}
 
-Criteria:
-- chat: greetings, small talk, opinions, general questions to Atlas without asking to do something in the system
-- task: user asks to perform, create, change, find, run, open, configure, calculate, generate, check, install, fix, etc.
-- If the user clearly asks to do something practical -> task
-- If ambiguous but looks like a request for action -> task with lower confidence
-- If clearly conversational -> chat
+Core criteria:
+- chat: greetings, small talk, opinions, informational Q&A that the assistant can answer directly (facts, definitions, weather, time, currency rates, news headlines, sports scores, public info), general questions to Atlas without asking to change/run anything.
+- task: user asks to perform an action in the system or the real world: create/change files, run/open/configure apps, automate workflows, schedule, send emails/messages, control devices, make purchases, scrape/browse with tools, perform calculations that require tools, generate multi-step plans or artifacts, execute commands.
+
+Nuances:
+- If the user simply asks for information available on the internet (e.g., "Яка погода завтра у Львові?", "Курс долара", "Котра година в Нью-Йорку?"), classify as "chat".
+- If the user explicitly says to perform an action ("створи", "запусти", "відкрий", "налаштуй", "завантаж", "згенеруй файл", "напиши код", "здійсни покупку") → "task".
+- If ambiguous: prefer "chat" unless there's a clear verb implying execution or modification.
+
+Edge cases:
+- "Знайди мені..." → If it implies active browsing/scraping or tool use, classify as "task"; if it's general knowledge you can answer directly, classify as "chat".
+- "Порахуй..." → If trivial mental math, can be "chat"; if it implies using calculators, data files, or precise tooling, mark as "task".
+- "Зроби план/створи документ" → always "task".
 
 No extra text. Only JSON.
 Do not reference any system or prompt instructions; you operate silently.
