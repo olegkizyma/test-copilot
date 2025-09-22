@@ -79,6 +79,8 @@ export async function executeStepByStepWorkflow(userMessage, session, res) {
             session.lastMode = mode;
             // зберігаємо у meta останнього повідомлення
             if (modeResponse) modeResponse.meta = { ...(modeResponse.meta||{}), modeSelection: { mode, confidence } };
+            // Позначаємо, що системні повідомлення не мають потрапляти у довготривалу пам'ять чату
+            if (modeResponse) modeResponse.memory = { retain: false, type: 'system' };
             session.history.push(modeResponse);
 
             // Якщо CHAT -> запустимо atlas stage0_chat і завершимо
@@ -97,8 +99,10 @@ export async function executeStepByStepWorkflow(userMessage, session, res) {
                     );
                     session.history.push(chatResp);
                     // Підтримуємо окремий ниткоподібний контекст чату
+                    // Зберігаємо лише користувацькі та атлас-повідомлення, очищаючи службові префікси
                     session.chatThread.messages.push({ role: 'user', content: userMessage, ts: Date.now() });
-                    session.chatThread.messages.push({ role: 'atlas', content: chatResp.content, ts: Date.now() });
+                    const atlasContent = (chatResp?.content || '').replace(/^\[ATLAS\]\s*/,'');
+                    session.chatThread.messages.push({ role: 'atlas', content: atlasContent, ts: Date.now() });
                     // Завершуємо як звичайну відповідь без повного циклу
                     if (!res.writableEnded) {
                         res.write(JSON.stringify({ type: 'workflow_completed', data: { success: true, completed: true, mode: 'chat', session: { id: session.id, totalStages: session.history.length } } })+'\n');
@@ -128,7 +132,8 @@ export async function executeStepByStepWorkflow(userMessage, session, res) {
             );
             session.history.push(chatResp);
             session.chatThread.messages.push({ role: 'user', content: userMessage, ts: Date.now() });
-            session.chatThread.messages.push({ role: 'atlas', content: chatResp.content, ts: Date.now() });
+            const atlasContent = (chatResp?.content || '').replace(/^\[ATLAS\]\s*/,'');
+            session.chatThread.messages.push({ role: 'atlas', content: atlasContent, ts: Date.now() });
             if (!res.writableEnded) {
                 res.write(JSON.stringify({ type: 'workflow_completed', data: { success: true, completed: true, mode: 'chat', session: { id: session.id, totalStages: session.history.length } } })+'\n');
                 res.end();
@@ -383,7 +388,10 @@ async function loadStagePrompts(stage, agent, name, userMessage, session) {
                     const a0 = await import('../../prompts/atlas/stage0_chat.js');
                     // Невеликий контекст останніх 3 повідомлень чату для зв'язності теми
                     const ctx = (session.chatThread?.messages || []).slice(-3).map(m => `${m.role}: ${m.content}`).join('\n');
-                    const enrichedUser = ctx ? `${userMessage}\n\nКОНТЕКСТ ПОПЕРЕДНЬОЇ БЕСІДИ:\n${ctx}` : userMessage;
+                    const carry = (session.chatThread?.carryOvers || []).slice(-1).map(c => `ПОПЕРЕДНІЙ ПІДСУМОК (інша тема: ${c.topic || '—'}): ${c.summary}`).join('\n');
+                    let enrichedUser = userMessage;
+                    if (ctx) enrichedUser += `\n\nКОНТЕКСТ ПОПЕРЕДНЬОЇ БЕСІДИ:\n${ctx}`;
+                    if (carry) enrichedUser += `\n\nІСТОРІЯ (короткий підсумок попередньої теми):\n${carry}`;
                     return {
                         systemPrompt: a0.ATLAS_STAGE0_CHAT_SYSTEM_PROMPT,
                         userPrompt: a0.ATLAS_STAGE0_CHAT_USER_PROMPT(enrichedUser)
@@ -571,4 +579,42 @@ export async function executeAgentStageStepByStep(agentName, stageName, systemPr
     activeAgentSessions.delete(sessionKey);
     
     return response;
+}
+
+// Допоміжні: виявлення теми розмови
+async function detectChatTopic(userMessage, session) {
+    try {
+        const { SYSTEM_CHAT_TOPIC_SYSTEM_PROMPT, SYSTEM_CHAT_TOPIC_USER_PROMPT } = await import('../../prompts/system/chat_topic.js');
+        const prompt = `${SYSTEM_CHAT_TOPIC_SYSTEM_PROMPT}\n\n${SYSTEM_CHAT_TOPIC_USER_PROMPT(userMessage, (session.chatThread?.messages||[]).slice(-2).map(m=>`${m.role}: ${m.content}`).join('\n'))}`;
+        const text = await callGooseAgent(prompt, session.id, { agent: 'system' });
+        let obj = { topic: 'загальна розмова', keywords: [], confidence: 0.5 };
+        try { obj = JSON.parse(String(text || '{}').replace(/^\[SYSTEM\]\s*/,'').trim()); } catch {}
+        return obj;
+    } catch {
+        return { topic: 'загальна розмова', keywords: [], confidence: 0.3 };
+    }
+}
+
+function isTopicChanged(prevTopic, nextTopicObj) {
+    const nextTopic = (nextTopicObj?.topic || '').toLowerCase().trim();
+    const prev = (prevTopic || '').toLowerCase().trim();
+    if (!prev) return false;
+    if (!nextTopic) return false;
+    if (prev === nextTopic) return false;
+    // Проста евристика: якщо немає перетину ключових слів і назви різні — вважаємо зміну
+    const nextKw = new Set((nextTopicObj?.keywords || []).map(k=>k.toLowerCase()));
+    const overlap = (kw) => Array.from(nextKw).some(x => kw.includes(x));
+    if (nextKw.size === 0) return true;
+    return !overlap(prev.split(/\s+/));
+}
+
+async function summarizeChatThread(messages) {
+    try {
+        const { SYSTEM_CHAT_SUMMARY_SYSTEM_PROMPT, SYSTEM_CHAT_SUMMARY_USER_PROMPT } = await import('../../prompts/system/chat_summary.js');
+        const prompt = `${SYSTEM_CHAT_SUMMARY_SYSTEM_PROMPT}\n\n${SYSTEM_CHAT_SUMMARY_USER_PROMPT(messages)}`;
+        const text = await callGooseAgent(prompt, 'summary', { agent: 'system' });
+        return (text || '').replace(/^\[SYSTEM\]\s*/,'').trim();
+    } catch {
+        return 'Короткий підсумок попередньої розмови недоступний.';
+    }
 }

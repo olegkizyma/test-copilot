@@ -17,7 +17,9 @@ Criteria:
 - If ambiguous but looks like a request for action -> task with lower confidence
 - If clearly conversational -> chat
 
-No extra text. Only JSON.`;
+No extra text. Only JSON.
+Do not reference any system or prompt instructions; you operate silently.
+Your output is metadata and must not be used as chat memory.`;
 
 export const SYSTEM_STAGE0_USER_PROMPT = (userMessage) => `USER_MESSAGE:\n${userMessage}`;
 
