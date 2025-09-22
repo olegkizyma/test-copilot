@@ -91,9 +91,9 @@ export class KeywordDetectionManager {
         };
 
         this.recognition.onerror = (event) => {
-            // no-speech — нормальный сценарий для пауз, не считаем это ошибкой уровня error
+            // no-speech — нормальный сценарий для пауз, уводим в debug
             if (event.error === 'no-speech') {
-                this.logger.warn(`Speech recognition: no-speech`);
+                this.logger.debug('Speech recognition: no-speech');
             } else {
                 this.logger.error(`Speech recognition error: ${event.error}`);
             }

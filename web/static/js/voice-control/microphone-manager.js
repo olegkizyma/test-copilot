@@ -88,7 +88,7 @@ export class MicrophoneButtonManager {
             }
         }
 
-        // Налаштовуємо обробники подій
+    // Налаштовуємо обробники подій
         this.setupEventListeners();
         
         // Оновлюємо стан кнопки
@@ -200,15 +200,13 @@ export class MicrophoneButtonManager {
      * Налаштування обробників подій
      */
     setupEventListeners() {
-        // Обробка натискання кнопки мікрофону
-    this.micButton.addEventListener('mousedown', (e) => this.handleMouseDown(e));
-    this.micButton.addEventListener('touchstart', (e) => this.handleMouseDown(e));
+        // Переход на Pointer Events: единый стек для мыши/тача/пера
+        this._activePointerId = null;
 
-    this.micButton.addEventListener('mouseup', (e) => this.handleMouseUp(e));
-    this.micButton.addEventListener('touchend', (e) => this.handleMouseUp(e));
-
-    // Трактуем mouseleave как возможный up только если действительно удерживали
-    this.micButton.addEventListener('mouseleave', (e) => this.handleMouseUp(e));
+        this.micButton.addEventListener('pointerdown', (e) => this.handlePointerDown(e));
+        this.micButton.addEventListener('pointerup', (e) => this.handlePointerUp(e));
+        this.micButton.addEventListener('pointerleave', (e) => this.handlePointerUp(e));
+        this.micButton.addEventListener('pointercancel', (e) => this.handlePointerCancel(e));
 
         // Callbacks для детектора ключового слова
         this.keywordDetector.setKeywordDetectedCallback((response, transcript) => {
@@ -234,7 +232,12 @@ export class MicrophoneButtonManager {
             return;
         }
         this._inputActive = true;
-        this._inputSource = (event.type === 'touchstart') ? 'touch' : 'mouse';
+        this._inputSource = (event.type?.startsWith('pointer')) ? 'pointer' : ((event.type === 'touchstart') ? 'touch' : 'mouse');
+        // Захватываем указатель, чтобы гарантированно получить pointerup, даже если курсор/палец ушёл с кнопки
+        if ('pointerId' in event && typeof event.pointerId === 'number') {
+            try { this.micButton.setPointerCapture(event.pointerId); } catch (_) {}
+            this._activePointerId = event.pointerId;
+        }
         this.isHolding = true;
         this.longHoldActivated = false;
         
@@ -258,9 +261,17 @@ export class MicrophoneButtonManager {
      */
     async handleMouseUp(event) {
         event.preventDefault();
-        // Игнорируем mouseleave, если ничего не удерживали
-        if (event.type === 'mouseleave' && !this.isHolding && !this._inputActive) {
+        // Игнорируем уход, если ничего не удерживали
+        if ((event.type === 'mouseleave' || event.type === 'pointerleave') && !this.isHolding && !this._inputActive) {
             return;
+        }
+
+        // Если есть activePointerId — обрабатываем только соответствующий pointer
+        if (this._activePointerId !== null && 'pointerId' in event && typeof event.pointerId === 'number') {
+            if (event.pointerId !== this._activePointerId) {
+                this.logger.debug('Ignoring pointer up for non-active pointerId');
+                return;
+            }
         }
 
         this.logger.info(`🖱️ MouseUp: isHolding=${this.isHolding}, longHold=${this.longHoldActivated}`);
@@ -275,6 +286,11 @@ export class MicrophoneButtonManager {
         this._inputActive = false;
         this._inputSource = null;
         this._lastUpAt = Date.now();
+        // Сбрасываем захват указателя
+        if (this._activePointerId !== null) {
+            try { this.micButton.releasePointerCapture(this._activePointerId); } catch (_) {}
+            this._activePointerId = null;
+        }
 
         this.isHolding = false;
         
@@ -299,6 +315,20 @@ export class MicrophoneButtonManager {
         
         // Reset the long hold flag
         this.longHoldActivated = false;
+    }
+
+    // Обработчики Pointer Events: проксируют к существующим методам
+    handlePointerDown(event) {
+        return this.handleMouseDown(event);
+    }
+
+    handlePointerUp(event) {
+        return this.handleMouseUp(event);
+    }
+
+    handlePointerCancel(event) {
+        // В случае отмены — ведём себя как при отпускании (без действий, если нечего отпускать)
+        return this.handleMouseUp(event);
     }
 
     /**
