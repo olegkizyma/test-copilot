@@ -168,17 +168,26 @@ app.post('/chat/stream', async (req, res) => {
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     
-    // Створюємо нову сесію
-    const session = { 
-        id: sessionId,
-        history: [],
-        currentStage: 0,
-        retryCycle: 0,
-        lastInteraction: Date.now(),
-        originalMessage: message,
-        waitingForConfirmation: false
-    };
-    sessions.set(sessionId, session);
+    // Отримуємо існуючу або створюємо нову сесію (для безперервного чату 0)
+    let session = sessions.get(sessionId);
+    if (!session) {
+        session = {
+            id: sessionId,
+            history: [],
+            currentStage: 0,
+            retryCycle: 0,
+            lastInteraction: Date.now(),
+            originalMessage: message,
+            waitingForConfirmation: false,
+            lastMode: undefined, // 'chat' | 'task'
+            chatThread: { messages: [], lastTopic: undefined }
+        };
+        sessions.set(sessionId, session);
+    } else {
+        // Оновлюємо останню активність і оригінальне повідомлення для зручності
+        session.lastInteraction = Date.now();
+        session.originalMessage = message;
+    }
     
     // Запускаємо step-by-step workflow
     try {

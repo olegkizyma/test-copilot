@@ -41,7 +41,7 @@ export async function executeStepByStepWorkflow(userMessage, session, res) {
     const workflowStart = Date.now();
     logger.info(`Starting step-by-step workflow following WORKFLOW_STAGES configuration`);
     
-    // 0. Попередній системний вибір режиму (класифікація chat/task)
+    // 0. Попередній системний вибір режиму (класифікація chat/task) з урахуванням попереднього режиму
     try {
         const modeStageCfg = WORKFLOW_STAGES.find(s => s.stage === 0 && s.agent === 'system');
         if (modeStageCfg) {
@@ -71,7 +71,12 @@ export async function executeStepByStepWorkflow(userMessage, session, res) {
                 if (txt.includes('"mode":"chat"')) mode = 'chat';
                 if (txt.includes('"mode":"task"')) mode = 'task';
             }
+            // Якщо попередній режим був chat і впевненість низька — зберігаємо чат для «липкої» бесіди
+            if (session.lastMode === 'chat' && confidence < 0.65 && mode === 'task') {
+                mode = 'chat';
+            }
             session.modeSelection = { mode, confidence };
+            session.lastMode = mode;
             // зберігаємо у meta останнього повідомлення
             if (modeResponse) modeResponse.meta = { ...(modeResponse.meta||{}), modeSelection: { mode, confidence } };
             session.history.push(modeResponse);
@@ -91,6 +96,9 @@ export async function executeStepByStepWorkflow(userMessage, session, res) {
                         { enableTools: false }
                     );
                     session.history.push(chatResp);
+                    // Підтримуємо окремий ниткоподібний контекст чату
+                    session.chatThread.messages.push({ role: 'user', content: userMessage, ts: Date.now() });
+                    session.chatThread.messages.push({ role: 'atlas', content: chatResp.content, ts: Date.now() });
                     // Завершуємо як звичайну відповідь без повного циклу
                     if (!res.writableEnded) {
                         res.write(JSON.stringify({ type: 'workflow_completed', data: { success: true, completed: true, mode: 'chat', session: { id: session.id, totalStages: session.history.length } } })+'\n');
@@ -109,8 +117,9 @@ export async function executeStepByStepWorkflow(userMessage, session, res) {
             'привіт', 'вітаю', 'хай', 'як справи', 'як ти', 'розкажи', 'що таке', 'поясни',
             'добрий день', 'добрий вечір', 'доброго дня', 'доброго вечора'
         ];
-        const isChat = chatIndicators.some(k => text.includes(k));
+        const isChat = chatIndicators.some(k => text.includes(k)) || session.lastMode === 'chat';
         session.modeSelection = { mode: isChat ? 'chat' : 'task', confidence: isChat ? 0.6 : 0.2 };
+        session.lastMode = session.modeSelection.mode;
         if (isChat) {
             // Виконаємо чат-відповідь Атласа й завершимо
             const promptsChat = await loadStagePrompts(0, 'atlas', 'stage0_chat', userMessage, session);
@@ -118,6 +127,8 @@ export async function executeStepByStepWorkflow(userMessage, session, res) {
                 'atlas', 'stage0_chat', promptsChat.systemPrompt, promptsChat.userPrompt, session, res, { enableTools: false }
             );
             session.history.push(chatResp);
+            session.chatThread.messages.push({ role: 'user', content: userMessage, ts: Date.now() });
+            session.chatThread.messages.push({ role: 'atlas', content: chatResp.content, ts: Date.now() });
             if (!res.writableEnded) {
                 res.write(JSON.stringify({ type: 'workflow_completed', data: { success: true, completed: true, mode: 'chat', session: { id: session.id, totalStages: session.history.length } } })+'\n');
                 res.end();
@@ -370,9 +381,12 @@ async function loadStagePrompts(stage, agent, name, userMessage, session) {
                 }
                 if (agent === 'atlas') {
                     const a0 = await import('../../prompts/atlas/stage0_chat.js');
+                    // Невеликий контекст останніх 3 повідомлень чату для зв'язності теми
+                    const ctx = (session.chatThread?.messages || []).slice(-3).map(m => `${m.role}: ${m.content}`).join('\n');
+                    const enrichedUser = ctx ? `${userMessage}\n\nКОНТЕКСТ ПОПЕРЕДНЬОЇ БЕСІДИ:\n${ctx}` : userMessage;
                     return {
                         systemPrompt: a0.ATLAS_STAGE0_CHAT_SYSTEM_PROMPT,
-                        userPrompt: a0.ATLAS_STAGE0_CHAT_USER_PROMPT(userMessage)
+                        userPrompt: a0.ATLAS_STAGE0_CHAT_USER_PROMPT(enrichedUser)
                     };
                 }
                 break;
