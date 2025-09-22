@@ -1,9 +1,9 @@
 /**
  * Моніторинг здоров'я системи
  */
-const logger = require('../utils/logger');
-const telemetry = require('../utils/telemetry');
-const os = require('os');
+import logger from '../utils/logger.js';
+import telemetry from '../utils/telemetry.js';
+import os from 'os';
 
 class HealthMonitor {
   constructor() {
@@ -92,4 +92,4 @@ class HealthMonitor {
   }
 }
 
-module.exports = new HealthMonitor();
+export default new HealthMonitor();

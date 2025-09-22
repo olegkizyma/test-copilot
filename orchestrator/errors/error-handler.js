@@ -1,8 +1,8 @@
 /**
  * Централізований обробник помилок системи
  */
-const stateManager = require('../state/state-manager');
-const logger = require('../utils/logger');
+import stateManager from '../state/state-manager.js';
+import logger from '../utils/logger.js';
 
 class ErrorHandler {
   constructor() {
@@ -82,4 +82,4 @@ class ErrorHandler {
   }
 }
 
-module.exports = new ErrorHandler();
+export default new ErrorHandler();

@@ -6,8 +6,8 @@
 import axios from 'axios';
 
 // Імпортуємо нові модулі
-const logger = require('../utils/logger');
-const agentProtocol = require('../agents/agent-protocol');
+import logger from '../utils/logger.js';
+import * as agentProtocol from '../agents/agent-protocol.js';
 
 // Model registry
 const MODELS = [
@@ -21,8 +21,8 @@ const MODELS = [
 ];
 
 // Token budget controls
-const MAX_INPUT_TOKENS = parseInt(process.env.FALLBACK_MAX_INPUT_TOKENS || '8000', 10);
-const TRUNCATE_STRATEGY = String(process.env.FALLBACK_TRUNCATE_STRATEGY || 'clip').toLowerCase();
+const MAX_INPUT_TOKENS = parseInt((process.env && process.env.FALLBACK_MAX_INPUT_TOKENS) || '8000', 10);
+const TRUNCATE_STRATEGY = String((process.env && process.env.FALLBACK_TRUNCATE_STRATEGY) || 'clip').toLowerCase();
 
 // Estimate token usage (approximate: 1 token ~= 4 chars)
 function estimateTokens(messages) {

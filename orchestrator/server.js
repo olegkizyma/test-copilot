@@ -14,10 +14,10 @@ import { chatCompletion, getAvailableModels } from './ai/fallback-llm.js';
 import { logMessage } from './utils/helpers.js';
 
 // Нові централізовані модулі
-const logger = require('./utils/logger');
-const errorHandler = require('./errors/error-handler');
-const telemetry = require('./utils/telemetry');
-const healthMonitor = require('./monitoring/health-monitor');
+import logger from './utils/logger.js';
+import errorHandler from './errors/error-handler.js';
+import telemetry from './utils/telemetry.js';
+import healthMonitor from './monitoring/health-monitor.js';
 
 const app = express();
 const PORT = process.env.ORCH_PORT || 5101;
@@ -223,6 +223,7 @@ app.post('/chat/confirm', async (req, res) => {
 
 // Endpoint для отримання поточного TTS запиту
 app.get('/tts/pending', (req, res) => {
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate'); // Відключаємо кешування
     const pendingRequest = global.pendingTTSRequest;
     
     if (pendingRequest) {

@@ -1,10 +1,13 @@
 /**
  * Модуль телеметрії для збору метрик та статистики
  */
-const fs = require('fs').promises;
-const path = require('path');
-const logger = require('./logger');
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import logger from './logger.js';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const METRICS_PATH = path.join(__dirname, '../../logs/metrics');
 
 // Створюємо директорію для метрик, якщо не існує
@@ -93,4 +96,4 @@ class Telemetry {
   }
 }
 
-module.exports = new Telemetry();
+export default new Telemetry();

@@ -82,24 +82,30 @@ log_progress() {
 
 # Get Goose binary path from config or fallback
 get_goose_binary() {
-    # Try to get path from config.yaml
+    # 1) Explicit env override
+    if [ -n "$GOOSE_BIN" ] && [ -x "$GOOSE_BIN" ]; then
+        echo "$GOOSE_BIN"
+        return 0
+    fi
+
+    # 2) Try to get path from config.yaml (desktop_path for legacy compatibility)
     if [ -f "$REPO_ROOT/config.yaml" ]; then
-        local config_path=$(grep -A 10 "^goose:" "$REPO_ROOT/config.yaml" | grep "desktop_path:" | sed 's/.*desktop_path: *"\([^"]*\)".*/\1/')
+        local config_path=$(grep -A 10 "^goose:" "$REPO_ROOT/config.yaml" | grep "desktop_path:" | sed 's/.*desktop_path: *"\([^"\\]*\)".*/\1/')
         if [ -n "$config_path" ] && [ -x "$config_path" ]; then
             echo "$config_path"
             return 0
         fi
     fi
-    
-    # Fallback order: Desktop -> Homebrew -> Local -> PATH
-    if [ -x "/Applications/Goose.app/Contents/MacOS/goose" ]; then
-        echo "/Applications/Goose.app/Contents/MacOS/goose"
-    elif [ -x "/opt/homebrew/bin/goose" ]; then
+
+    # 3) Prefer Homebrew CLI first, then PATH, then Desktop app
+    if [ -x "/opt/homebrew/bin/goose" ]; then
         echo "/opt/homebrew/bin/goose"
-    elif [ -x "$HOME/.local/bin/goose" ]; then
-        echo "$HOME/.local/bin/goose"
     elif command -v goose >/dev/null 2>&1; then
         echo "goose"
+    elif [ -x "$HOME/.local/bin/goose" ]; then
+        echo "$HOME/.local/bin/goose"
+    elif [ -x "/Applications/Goose.app/Contents/MacOS/goose" ]; then
+        echo "/Applications/Goose.app/Contents/MacOS/goose"
     else
         echo ""
     fi
@@ -204,12 +210,30 @@ validate_goose_config() {
     
     # Test if Goose actually works instead of checking token details
     log_info "Testing Goose functionality..."
-    if timeout 10 "$goose_bin" web --help > /dev/null 2>&1; then
-        log_info "Goose configuration appears to be working"
-        return 0
+    local timeout_cmd=""
+    if command -v timeout >/dev/null 2>&1; then
+        timeout_cmd="timeout 10"
+    elif command -v gtimeout >/dev/null 2>&1; then
+        timeout_cmd="gtimeout 10"
+    fi
+
+    if [ -n "$timeout_cmd" ]; then
+        if $timeout_cmd "$goose_bin" web --help > /dev/null 2>&1; then
+            log_info "Goose configuration appears to be working"
+            return 0
+        else
+            log_warn "Goose functionality test failed"
+            return 1
+        fi
     else
-        log_warn "Goose functionality test failed"
-        return 1
+        # No timeout available; rely on CLI help being instant for CLI builds
+        if "$goose_bin" web --help > /dev/null 2>&1; then
+            log_info "Goose configuration appears to be working"
+            return 0
+        else
+            log_warn "Goose functionality test failed"
+            return 1
+        fi
     fi
 }
 
@@ -305,17 +329,15 @@ start_goose_web_server() {
     log_info "Checking Goose configuration..."
     if ! "$goose_bin" --version > /dev/null 2>&1; then
         log_error "Goose CLI is not working properly"
+        log_info "Hint: prefer Homebrew CLI (brew install block-goose-cli) or set GOOSE_BIN=<path>"
         return 1
     fi
     
     # Validate Goose configuration
     if ! validate_goose_config; then
         log_warn "Goose configuration validation failed"
-        if ! repair_goose_config; then
-            log_error "Failed to repair Goose configuration"
-            log_info "Please run: $goose_bin configure"
-            return 1
-        fi
+        # Avoid interactive configure here; instruct user instead
+        log_info "If needed, run manually: $goose_bin configure"
     fi
     
     # Start Goose web server
@@ -598,7 +620,7 @@ cmd_status() {
         
         if [ -f "$pidfile" ] && ps -p $(cat "$pidfile") > /dev/null 2>&1; then
             echo -e "${GREEN}● RUNNING${NC} (PID: $(cat "$pidfile"), Port: $port)"
-        elif check_port "$port"; then
+        elif ! check_port "$port"; then
             echo -e "${YELLOW}● PORT IN USE${NC} (Port: $port, external process)"
         else
             echo -e "${RED}● STOPPED${NC}"
@@ -625,7 +647,7 @@ cmd_logs() {
     else
         case $service in
             goose)
-                tail -f "$LOGS_DIR/goose_server.log"
+                tail -f "$LOGS_DIR/goose_web.log"
                 ;;
             frontend)
                 tail -f "$LOGS_DIR/frontend.log"

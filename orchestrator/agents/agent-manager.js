@@ -1,14 +1,15 @@
 /**
  * Централізований менеджер агентів
  */
-const logger = require('../utils/logger');
-const gooseClient = require('./goose-client');
-const stateManager = require('../state/state-manager');
+import logger from '../utils/logger.js';
+import gooseClient from './goose-client.js';
+import stateManager from '../state/state-manager.js';
+import agentConfigs from '../config/agents.js';
 
 class AgentManager {
   constructor() {
     this.agents = new Map();
-    this.agentConfigs = require('../config/agents');
+    this.agentConfigs = agentConfigs;
     this.initializeAgents();
   }
   
@@ -53,7 +54,7 @@ class AgentManager {
           result = await gooseClient.execute(agent.config.model, input, options);
           break;
         case 'fallback':
-          const fallbackLLM = require('../ai/fallback-llm');
+          const { default: fallbackLLM } = await import('../ai/fallback-llm.js');
           result = await fallbackLLM.process(input, options);
           break;
         default:
@@ -102,4 +103,4 @@ class AgentManager {
   }
 }
 
-module.exports = new AgentManager();
+export default new AgentManager();

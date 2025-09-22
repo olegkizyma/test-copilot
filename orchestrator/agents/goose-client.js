@@ -10,8 +10,8 @@ import os from 'os';
 import fs from 'fs';
 
 // Імпортуємо нові модулі
-const logger = require('../utils/logger');
-const agentProtocol = require('./agent-protocol');
+import logger from '../utils/logger.js';
+import * as agentProtocol from './agent-protocol.js';
 
 // Функція автоматичного виявлення порту Goose
 export async function detectGoosePort() {

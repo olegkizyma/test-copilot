@@ -1,11 +1,14 @@
 /**
  * Модуль для збереження та відновлення стану
  */
-const fs = require('fs').promises;
-const path = require('path');
-const stateManager = require('./state-manager');
-const logger = require('../utils/logger');
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import stateManager from './state-manager.js';
+import logger from '../utils/logger.js';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const STORAGE_PATH = path.join(__dirname, '../../logs/state');
 
 // Створюємо директорію, якщо не існує
@@ -45,7 +48,4 @@ async function loadState(sessionId) {
   }
 }
 
-module.exports = {
-  saveState,
-  loadState
-};
+export { saveState, loadState };

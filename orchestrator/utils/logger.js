@@ -1,10 +1,13 @@
 /**
  * Централізований модуль логування
  */
-const winston = require('winston');
-const path = require('path');
-const fs = require('fs');
+import winston from 'winston';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const LOG_DIR = path.join(__dirname, '../../logs');
 
 // Створюємо директорію для логів, якщо не існує
@@ -36,4 +39,4 @@ const logger = winston.createLogger({
   ]
 });
 
-module.exports = logger;
+export default logger;

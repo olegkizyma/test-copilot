@@ -1,7 +1,7 @@
 /**
  * Стандартний протокол взаємодії між агентами
  */
-const logger = require('../utils/logger');
+import logger from '../utils/logger.js';
 
 // Формати повідомлень для спілкування між агентами
 const messageTypes = {
@@ -59,7 +59,7 @@ function createError(errorMessage, errorCode = 'UNKNOWN_ERROR', metadata = {}) {
   }, metadata);
 }
 
-module.exports = {
+export {
   messageTypes,
   formatMessage,
   validateMessage,

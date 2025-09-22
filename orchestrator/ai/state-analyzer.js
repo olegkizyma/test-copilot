@@ -4,11 +4,11 @@
  */
 
 import axios from 'axios';
-import { STATE_ANALYSIS_PROMPTS, FALLBACK_ANALYSIS_RULES, DEFAULT_STATES } from '../../prompts/system/state_analysis_prompts.js';
+import { STATE_ANALYSIS_PROMPTS, FALLBACK_ANALYSIS_RULES, DEFAULT_STATES } from '../../prompts/system/state_analysis_prompts.mjs';
 
 // Імпортуємо централізовані модулі
-const stateManager = require('../state/state-manager');
-const logger = require('../utils/logger');
+import stateManager from '../state/state-manager.js';
+import logger from '../utils/logger.js';
 
 // Функція для аналізу відповіді агента за допомогою AI
 export async function analyzeAgentResponse(agent, response, stage) {

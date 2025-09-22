@@ -1,7 +1,7 @@
 /**
  * Централізований менеджер стану для всієї системи
  */
-const EventEmitter = require('events');
+import { EventEmitter } from 'events';
 
 class StateManager extends EventEmitter {
   constructor() {
@@ -48,4 +48,4 @@ class StateManager extends EventEmitter {
   }
 }
 
-module.exports = new StateManager();
+export default new StateManager();

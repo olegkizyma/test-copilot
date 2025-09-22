@@ -10,9 +10,9 @@ import { callGooseAgent } from '../agents/goose-client.js';
 import { logMessage, sendToTTSAndWait, generateMessageId } from '../utils/helpers.js';
 
 // Імпортуємо нові централізовані модулі
-const logger = require('../utils/logger');
-const telemetry = require('../utils/telemetry');
-const errorHandler = require('../errors/error-handler');
+import logger from '../utils/logger.js';
+import telemetry from '../utils/telemetry.js';
+import errorHandler from '../errors/error-handler.js';
 
 // Семафор для запобігання одночасному запуску агентів
 const activeAgentSessions = new Set();
