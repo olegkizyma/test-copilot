@@ -181,11 +181,11 @@ window.atlasDiagnostics = {
     runDiagnostics
 };
 
-// Автоматически запускаем диагностику через 2 секунды после загрузки
-setTimeout(() => {
-    if (document.readyState === 'complete') {
-        runDiagnostics();
-    }
-}, 2000);
+// Автоматически запускаем диагностику через 2 секунды после загрузки (ОТКЛЮЧЕНО)
+// setTimeout(() => {
+//     if (document.readyState === 'complete') {
+//         runDiagnostics();
+//     }
+// }, 2000);
 
 console.log('🔧 ATLAS Diagnostics loaded. Use window.atlasDiagnostics.runDiagnostics() to run tests manually.');

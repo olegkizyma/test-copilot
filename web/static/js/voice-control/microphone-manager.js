@@ -29,6 +29,7 @@ export class MicrophoneButtonManager {
         this.holdTimer = null;
         this.clickTimer = null;
         this.isHolding = false;
+        this.longHoldActivated = false; // Флаг для відстеження довгого утримання
         
         // Стандартне розпізнавання мови для короткого кліку (fallback)
         this.standardRecognition = null;
@@ -157,61 +158,71 @@ export class MicrophoneButtonManager {
     }
 
     /**
-     * Обробка натискання кнопки
+     * Обробка натискання кнопки - НОВА ЛОГІКА
      */
     handleMouseDown(event) {
         event.preventDefault();
         
-        // Дозволяємо взаємодію в режимі ключового слова (для його вимкнення)
-        if (this.currentState !== VOICE_CONFIG.BUTTON_STATES.IDLE && 
-            this.currentState !== VOICE_CONFIG.BUTTON_STATES.KEYWORD_MODE) {
-            return;
-        }
-
-        this.isHolding = true;
+        this.logger.info(`🖱️ Mouse down - current state: ${this.currentState}`);
         
-        // Встановлюємо таймер для довгого утримання
+        // Скидаємо прапорці
+        this.isHolding = true;
+        this.longHoldActivated = false;
+        
+        // Встановлюємо таймер для довгого утримання (2 секунди)
         this.holdTimer = setTimeout(() => {
             if (this.isHolding) {
-                this.startKeywordMode();
+                this.longHoldActivated = true;
+                this.logger.info('⏰ Long hold detected - will activate BLUE mode on release');
             }
         }, VOICE_CONFIG.MICROPHONE_BUTTON.holdDuration);
     }
 
     /**
-     * Обробка відпускання кнопки
+     * Обробка відпускання кнопки - НОВА ЛОГІКА
      */
     async handleMouseUp(event) {
         event.preventDefault();
         
         if (!this.isHolding) {
+            // Це клік без попереднього mousedown - ігноруємо
             return;
         }
-
+        
         this.isHolding = false;
         
-        // Очищаємо таймер довгого утримання
+        // Очищаємо таймер
         if (this.holdTimer) {
             clearTimeout(this.holdTimer);
             this.holdTimer = null;
         }
-
-        // Якщо кнопка була відпущена швидко - короткий клік (тільки якщо в режимі IDLE)
-        if (this.currentState === VOICE_CONFIG.BUTTON_STATES.IDLE) {
-            this.handleShortClick();
+        
+        this.logger.info(`👆 Mouse up - longHold: ${this.longHoldActivated}, current state: ${this.currentState}`);
+        
+        // ГОЛОВНА ЛОГІКА: Один клік завжди вимикає будь-який активний режим
+        if (this.currentState === VOICE_CONFIG.BUTTON_STATES.GREEN_MODE || 
+            this.currentState === VOICE_CONFIG.BUTTON_STATES.BLUE_MODE) {
+            
+            this.logger.info('� Click detected - turning OFF active mode');
+            await this.turnOffAllModes();
+            return;
         }
-        // Якщо в режимі запису - зупиняємо запис
-        else if (this.currentState === VOICE_CONFIG.BUTTON_STATES.LISTENING) {
-            if (this.useWhisper) {
-                await this.stopWhisperRecording();
+        
+        // Якщо ми в IDLE стані
+        if (this.currentState === VOICE_CONFIG.BUTTON_STATES.IDLE) {
+            if (this.longHoldActivated) {
+                // Довге утримання - активуємо СИНІЙ режим
+                this.logger.info('🔵 Long hold completed - activating BLUE mode');
+                await this.activateBlueMode();
+            } else {
+                // Короткий клік - активуємо ЗЕЛЕНИЙ режим
+                this.logger.info('� Short click - activating GREEN mode');
+                await this.activateGreenMode();
             }
         }
-        // Якщо в режимі ключового слова - НЕ вимикаємо його автоматично
-        // Режим ключового слова повинен залишатися активним для очікування команди "Атлас"
-        else if (this.currentState === VOICE_CONFIG.BUTTON_STATES.KEYWORD_MODE) {
-            this.logger.info('🎯 Keyword mode remains active after button release');
-            // Не викликаємо stopKeywordMode(), щоб режим залишився активним
-        }
+        
+        // Скидаємо флаг
+        this.longHoldActivated = false;
     }
 
     /**
@@ -279,7 +290,7 @@ export class MicrophoneButtonManager {
 
             // Транскрибуємо аудіо
             const result = await this.whisperManager.transcribeAudio(audioBlob, 'uk');
-            this.handleWhisperResult(result.text, 'short', result.language || 'uk');
+            this.handleWhisperResult(result, 'short');
 
         } catch (error) {
             this.logger.error('Error stopping Whisper recording:', error);
@@ -290,10 +301,30 @@ export class MicrophoneButtonManager {
     /**
      * Обробка результату Whisper транскрипції
      */
-    handleWhisperResult(text, mode = 'short', language = 'uk') {
+    handleWhisperResult(result, mode = 'short') {
+        // Якщо це старий формат (тільки текст)
+        if (typeof result === 'string') {
+            result = { text: result, language: 'uk' };
+        }
+
+        const text = result.text || '';
+        const language = result.language || 'uk';
+
+        if (result.filtered) {
+            this.logger.warn(`🚫 Filtered result: "${result.originalText}" - ${result.reason}`);
+            // Додаємо в таблицю як відфільтрований
+            this.resultsManager.addWhisperTranscription(
+                `[FILTERED] ${result.originalText}`, 
+                mode, 
+                language, 
+                { filtered: true, reason: result.reason }
+            );
+            this.setState(VOICE_CONFIG.BUTTON_STATES.IDLE);
+            return;
+        }
+
         if (!text || text.trim().length === 0) {
             this.logger.warn('Empty transcription result');
-            // Все равно добавляем в таблицу с ошибкой
             this.resultsManager.addWhisperTranscription('', mode, language);
             this.setState(VOICE_CONFIG.BUTTON_STATES.IDLE);
             return;
@@ -301,13 +332,81 @@ export class MicrophoneButtonManager {
 
         this.logger.info(`📝 Whisper result (${mode}): "${text}"`);
         
-        // Добавляем результат в таблицу
+        // Додаємо результат в таблицю
         this.resultsManager.addWhisperTranscription(text, mode, language);
         
         // НЕ відправляємо автоматично в чат - користувач сам вирішує
         // this.handleStandardSpeechResult(text);
+        
+        // Повертаємо кнопку в звичайний стан після обробки
+        this.setState(VOICE_CONFIG.BUTTON_STATES.IDLE);
     }
 
+    // ==================== НОВІ МЕТОДИ РЕЖИМІВ ====================
+    
+    /**
+     * Вимкнення всіх активних режимів
+     */
+    async turnOffAllModes() {
+        this.logger.info('🛑 Turning off all active modes');
+        
+        if (this.currentState === VOICE_CONFIG.BUTTON_STATES.GREEN_MODE) {
+            await this.deactivateGreenMode();
+        } else if (this.currentState === VOICE_CONFIG.BUTTON_STATES.BLUE_MODE) {
+            await this.deactivateBlueMode();
+        }
+        
+        this.setState(VOICE_CONFIG.BUTTON_STATES.IDLE);
+    }
+    
+    /**
+     * Активація ЗЕЛЕНОГО режиму - безперервне прослуховування
+     */
+    async activateGreenMode() {
+        this.logger.info('🟢 Activating GREEN mode - continuous listening');
+        this.setState(VOICE_CONFIG.BUTTON_STATES.GREEN_MODE);
+        
+        // Тут буде логіка безперервного прослуховування через Whisper
+        // Поки що просто змінюємо стан
+    }
+    
+    /**
+     * Деактивація ЗЕЛЕНОГО режиму
+     */
+    async deactivateGreenMode() {
+        this.logger.info('🛑 Deactivating GREEN mode');
+        // Зупиняємо будь-які активні записи Whisper
+        if (this.whisperManager) {
+            await this.whisperManager.stopRecording();
+        }
+    }
+    
+    /**
+     * Активація СИНЬОГО режиму - режим ключового слова "Атлас"
+     */
+    async activateBlueMode() {
+        this.logger.info('🔵 Activating BLUE mode - keyword detection');
+        this.setState(VOICE_CONFIG.BUTTON_STATES.BLUE_MODE);
+        
+        // Запускаємо детекцію ключового слова
+        if (this.keywordDetector.start()) {
+            this.logger.info('🎯 Keyword detection activated for "Атлас"');
+        } else {
+            this.logger.error('Failed to start keyword detection');
+            this.setState(VOICE_CONFIG.BUTTON_STATES.IDLE);
+        }
+    }
+    
+    /**
+     * Деактивація СИНЬОГО режиму
+     */
+    async deactivateBlueMode() {
+        this.logger.info('🛑 Deactivating BLUE mode');
+        this.keywordDetector.stop();
+    }
+
+    // ==================== СТАРІ МЕТОДИ (ПОТІМ ВИДАЛИТИ) ====================
+    
     /**
      * Запуск режиму ключового слова
      */
@@ -467,7 +566,7 @@ export class MicrophoneButtonManager {
 
             // Транскрибуємо аудіо
             const result = await this.whisperManager.transcribeAudio(audioBlob, 'uk');
-            this.handleWhisperResult(result.text, 'long', result.language || 'uk');
+            this.handleWhisperResult(result, 'long');
 
         } catch (error) {
             this.logger.error('Error stopping Whisper recording after keyword:', error);
@@ -529,30 +628,45 @@ export class MicrophoneButtonManager {
         // Оновлюємо стилі та tooltip
         switch (state) {
             case VOICE_CONFIG.BUTTON_STATES.IDLE:
-                this.micButton.style.background = 'rgba(0, 20, 10, 0.6)';
-                this.micButton.title = 'Клік - запис повідомлення | Утримати - режим "Атлас"';
-                this.micButton.classList.remove('listening', 'keyword-mode', 'processing');
+                this.micButton.style.background = 'rgba(60, 60, 60, 0.6)';
+                this.micButton.title = 'Клік - зелений режим | Утримати 2с - синій режим "Атлас"';
+                this.micButton.classList.remove('green-mode', 'blue-mode', 'processing');
                 break;
                 
+            case VOICE_CONFIG.BUTTON_STATES.GREEN_MODE:
+                this.micButton.style.background = 'rgba(0, 255, 0, 0.6)';
+                this.micButton.title = 'ЗЕЛЕНИЙ режим активний - безперервне прослуховування | Клік - вимкнути';
+                this.micButton.classList.add('green-mode');
+                this.micButton.classList.remove('blue-mode', 'processing');
+                break;
+                
+            case VOICE_CONFIG.BUTTON_STATES.BLUE_MODE:
+                this.micButton.style.background = 'rgba(0, 100, 255, 0.6)';
+                this.micButton.title = 'СИНІЙ режим активний - очікування "Атлас" | Клік - вимкнути';
+                this.micButton.classList.add('blue-mode');
+                this.micButton.classList.remove('green-mode', 'processing');
+                break;
+                
+            case VOICE_CONFIG.BUTTON_STATES.PROCESSING:
+                this.micButton.style.background = 'rgba(255, 165, 0, 0.6)';
+                this.micButton.title = 'Обробка...';
+                this.micButton.classList.add('processing');
+                this.micButton.classList.remove('green-mode', 'blue-mode');
+                break;
+                
+            // Підтримка старих станів для зворотної сумісності
             case VOICE_CONFIG.BUTTON_STATES.LISTENING:
                 this.micButton.style.background = 'rgba(255, 0, 0, 0.4)';
                 this.micButton.title = 'Записую повідомлення...';
                 this.micButton.classList.add('listening');
-                this.micButton.classList.remove('keyword-mode', 'processing');
+                this.micButton.classList.remove('green-mode', 'blue-mode', 'processing');
                 break;
                 
             case VOICE_CONFIG.BUTTON_STATES.KEYWORD_MODE:
                 this.micButton.style.background = 'rgba(0, 0, 255, 0.4)';
-                this.micButton.title = 'Режим "Атлас" - скажіть "Атлас" для активації';
+                this.micButton.title = 'Старий режим "Атлас"';
                 this.micButton.classList.add('keyword-mode');
-                this.micButton.classList.remove('listening', 'processing');
-                break;
-                
-            case VOICE_CONFIG.BUTTON_STATES.PROCESSING:
-                this.micButton.style.background = 'rgba(255, 165, 0, 0.4)';
-                this.micButton.title = 'Обробка...';
-                this.micButton.classList.add('processing');
-                this.micButton.classList.remove('listening', 'keyword-mode');
+                this.micButton.classList.remove('green-mode', 'blue-mode', 'processing');
                 break;
         }
     }

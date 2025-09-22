@@ -19,6 +19,14 @@ export class WhisperResultsManager {
             return false;
         }
 
+        // Додаємо обробник кнопки очистки
+        const clearButton = document.getElementById('clear-whisper-results');
+        if (clearButton) {
+            clearButton.addEventListener('click', () => {
+                this.clearAllResults();
+            });
+        }
+
         console.log('✅ Whisper Results Manager initialized');
         return true;
     }
@@ -54,22 +62,32 @@ export class WhisperResultsManager {
                 second: '2-digit' 
             });
 
+        // Визначаємо CSS клас та колір для відфільтрованих результатів
+        const filteredClass = result.filtered ? 'filtered' : '';
+        const textTitle = result.filtered 
+            ? `ВІДФІЛЬТРОВАНО: ${result.reason || 'Підозрілий результат'}`
+            : `Клікніть щоб відправити в чат: ${result.text || ''}`;
+
         row.innerHTML = `
             <td class="whisper-timestamp">${timeStr}</td>
             <td class="whisper-mode ${result.mode || 'short'}">${(result.mode || 'short').toUpperCase()}</td>
-            <td class="whisper-text clickable-text" title="Клікніть щоб відправити в чат: ${result.text || ''}" data-text="${result.text || ''}">${this.truncateText(result.text || '', 50)}</td>
+            <td class="whisper-text ${filteredClass}" title="${textTitle}" data-text="${result.text || ''}">${this.truncateText(result.text || '', 50)}</td>
             <td class="whisper-language">${(result.language || 'uk').toUpperCase()}</td>
             <td class="whisper-status ${result.status || 'processing'}">${(result.status || 'processing').toUpperCase()}</td>
         `;
 
-        // Додаємо обробник кліку на текст для відправки в чат
+        // Додаємо обробник кліку на текст для відправки в чат (тільки для не відфільтрованих)
         const textCell = row.querySelector('.whisper-text');
-        if (textCell && result.text && result.text.trim()) {
+        if (textCell && result.text && result.text.trim() && !result.filtered) {
             textCell.addEventListener('click', () => {
                 this.sendToChat(result.text.trim());
             });
             textCell.style.cursor = 'pointer';
             textCell.style.color = '#00ff88';
+        } else if (result.filtered) {
+            // Для відфільтрованих результатів показуємо сіро-червоний колір
+            textCell.style.color = '#ff6666';
+            textCell.style.opacity = '0.7';
         }
 
         // Добавляем в начало таблицы (новые результаты сверху)
@@ -161,19 +179,22 @@ export class WhisperResultsManager {
     /**
      * Добавляет результат с обработкой на основе типа транскрипции
      */
-    addWhisperTranscription(text, mode = 'short', language = 'uk') {
+    addWhisperTranscription(text, mode = 'short', language = 'uk', options = {}) {
         const result = {
             text: text,
             mode: mode,
             language: language,
-            status: text && text.trim() ? 'success' : 'error',
-            timestamp: new Date()
+            status: options.filtered ? 'filtered' : (text && text.trim() ? 'success' : 'error'),
+            timestamp: new Date(),
+            filtered: options.filtered || false,
+            reason: options.reason || null
         };
 
         this.addResult(result);
         
-        // Если текст есть - отправляем в чат (для интеграции с основной системой)
-        if (text && text.trim() && window.atlasChat) {
+        // НЕ відправляємо відфільтровані результати в чат автоматично
+        // Користувач може вручну клікнути щоб відправити
+        if (text && text.trim() && !options.filtered && window.atlasChat) {
             try {
                 // Добавляем сообщение в чат как пользовательское
                 if (typeof window.atlasChat.addUserMessage === 'function') {
@@ -192,6 +213,16 @@ export class WhisperResultsManager {
         }
 
         return result;
+    }
+
+    /**
+     * Очищає всі результати з таблиці
+     */
+    clearAllResults() {
+        if (this.tableBody) {
+            this.tableBody.innerHTML = '';
+            console.log('🗑️ Whisper results table cleared');
+        }
     }
 
     /**

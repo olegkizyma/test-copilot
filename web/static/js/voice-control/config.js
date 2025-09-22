@@ -55,17 +55,17 @@ export const VOICE_CONFIG = {
     
     // Статуси кнопки мікрофону
     BUTTON_STATES: {
-        IDLE: 'idle',
-        LISTENING: 'listening', 
-        KEYWORD_MODE: 'keyword_mode',
-        PROCESSING: 'processing'
+        IDLE: 'idle',              // Сірий - нічого не активно
+        GREEN_MODE: 'green_mode',  // Зелений - безперервне прослуховування
+        BLUE_MODE: 'blue_mode',    // Синій - режим ключового слова
+        PROCESSING: 'processing'   // Жовтий/помаранчевий - обробка
     },
     
     // Іконки для різних станів
     BUTTON_ICONS: {
         IDLE: '🎤',
-        LISTENING: '🔴',
-        KEYWORD_MODE: '👂',
+        GREEN_MODE: '�',
+        BLUE_MODE: '�', 
         PROCESSING: '⏳'
     }
 };

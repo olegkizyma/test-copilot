@@ -46,6 +46,16 @@ export const AGENTS = {
         priority: 4,
         description: 'Системне завершення workflow',
         enableTools: false
+    },
+    user: {
+        role: 'user',
+        name: 'User',
+        signature: '', // Порожня мітка для користувача
+        color: '#ffffff',
+        voice: null,
+        priority: 0,
+        description: 'Користувач системи',
+        enableTools: false
     }
 };
 

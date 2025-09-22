@@ -23,7 +23,7 @@ logger = logging.getLogger('atlas.whisper')
 
 # Конфігурація
 WHISPER_PORT = int(os.environ.get('WHISPER_PORT', 3002))
-WHISPER_MODEL = 'large-v3'  # Використовуємо Large v3 для найкращої якості
+WHISPER_MODEL = 'medium'  # Змінюємо на більш стабільну модель
 DEVICE = "auto"  # faster-whisper автоматично обере найкращий пристрій
 COMPUTE_TYPE = "float32"  # Для стабільності на Apple Silicon
 
@@ -203,6 +203,19 @@ def transcribe_audio():
             full_text = ' '.join(full_text_parts).strip()
             transcription_time = (datetime.now() - start_time).total_seconds()
             
+            # Перевіряємо чи результат валідний
+            if not is_valid_transcription(full_text, info.duration):
+                logger.info(f"🚫 Результат відфільтровано: '{full_text}'")
+                return jsonify({
+                    'status': 'filtered',
+                    'text': '',
+                    'reason': 'Suspicious or too short transcription',
+                    'original_text': full_text,
+                    'duration': round(info.duration, 2),
+                    'transcription_time': round(transcription_time, 2),
+                    'timestamp': datetime.now().isoformat()
+                })
+            
             logger.info(f"✅ Транскрипція завершена за {transcription_time:.2f}с: '{full_text[:100]}...'")
             
             response_data = {
@@ -300,6 +313,20 @@ def transcribe_blob():
             
             text = ' '.join(full_text_parts).strip()
             detected_language = info.language
+            
+            # Перевіряємо чи результат валідний
+            if not is_valid_transcription(text, info.duration):
+                logger.info(f"🚫 Blob результат відфільтровано: '{text}'")
+                return jsonify({
+                    'status': 'filtered',
+                    'text': '',
+                    'reason': 'Suspicious or too short transcription',
+                    'original_text': text,
+                    'duration': round(info.duration, 2),
+                    'transcription_time': transcription_time,
+                    'model': WHISPER_MODEL,
+                    'device': DEVICE
+                })
             
             logger.info(f"✅ Blob transcription completed in {transcription_time:.2f}s: '{text[:50]}...'")
             

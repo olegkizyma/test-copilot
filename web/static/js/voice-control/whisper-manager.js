@@ -169,6 +169,17 @@ export class WhisperManager {
                     transcriptionTime: result.transcription_time,
                     confidence: 1.0 // Whisper не повертає confidence, але якість висока
                 };
+            } else if (result.status === 'filtered') {
+                this.logger.info(`🚫 Transcription filtered: "${result.original_text}" - ${result.reason}`);
+                return {
+                    text: '', // Повертаємо порожній текст для відфільтрованих результатів
+                    language: result.language || language,
+                    transcriptionTime: result.transcription_time,
+                    confidence: 0.0,
+                    filtered: true,
+                    reason: result.reason,
+                    originalText: result.original_text
+                };
             } else {
                 throw new Error(result.error || 'Transcription failed');
             }

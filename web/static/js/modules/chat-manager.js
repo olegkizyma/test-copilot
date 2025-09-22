@@ -133,15 +133,18 @@ export class ChatManager {
         messageElement.className = `message ${message.agent}-message`;
         messageElement.setAttribute('data-message-id', message.id);
 
-        const timestamp = new Date(message.timestamp).toLocaleTimeString();
-        
-        messageElement.innerHTML = `
+        // Показуємо header тільки якщо є мітка агента
+        const hasSignature = message.signature && message.signature.trim() !== '';
+        const headerHtml = hasSignature ? `
             <div class="message-header">
                 <span class="agent-signature" style="color: ${message.color}">
                     ${message.signature}
                 </span>
-                <span class="timestamp">${timestamp}</span>
             </div>
+        ` : '';
+        
+        messageElement.innerHTML = `
+            ${headerHtml}
             <div class="message-content">
                 ${this.formatMessageContent(message.content)}
             </div>
