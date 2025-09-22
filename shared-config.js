@@ -167,7 +167,17 @@ export const WORKFLOW_CONFIG = {
     maxCycles: 3,
     timeoutPerStage: 60000, // 60 секунд
     enableVerification: true,
-    fallbackToSimulation: false
+    fallbackToSimulation: false,
+    chatTopic: {
+        // ВАРИАНТ Б по умолчанию: только событие topic_changed, фронтенд решает
+        autoSplitOnTopicChange: false,
+        // Показывать suggested_new_session_id в событии topic_changed
+        suggestNewSessionId: true,
+        // Максимальная длина переносимого суммари (в предложениях)
+        summaryMaxSentences: 3,
+        // Порог уверенности для автоматических действий (если включат autoSplitOnTopicChange)
+        topicChangeConfidence: 0.8
+    }
 };
 
 // API endpoints
