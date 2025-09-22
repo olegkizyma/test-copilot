@@ -172,7 +172,7 @@ app.post('/chat/stream', async (req, res) => {
     const session = { 
         id: sessionId,
         history: [],
-        currentStage: 1,
+        currentStage: 0,
         retryCycle: 0,
         lastInteraction: Date.now(),
         originalMessage: message,

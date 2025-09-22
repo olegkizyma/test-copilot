@@ -41,8 +41,94 @@ export async function executeStepByStepWorkflow(userMessage, session, res) {
     const workflowStart = Date.now();
     logger.info(`Starting step-by-step workflow following WORKFLOW_STAGES configuration`);
     
-    // Виконуємо етапи згідно конфігурації WORKFLOW_STAGES
+    // 0. Попередній системний вибір режиму (класифікація chat/task)
+    try {
+        const modeStageCfg = WORKFLOW_STAGES.find(s => s.stage === 0 && s.agent === 'system');
+        if (modeStageCfg) {
+            session.currentStage = modeStageCfg.stage;
+            const prompts0 = await loadStagePrompts(0, 'system', 'stage0_mode_selection', userMessage, session);
+            if (!prompts0) throw new Error('No prompts for system stage 0');
+            const modeResponse = await executeAgentStageStepByStep(
+                'system',
+                'stage0_mode_selection',
+                prompts0.systemPrompt,
+                prompts0.userPrompt,
+                session,
+                res,
+                { enableTools: false }
+            );
+            // Очікуємо, що контент містить JSON або ми збережемо результат в meta
+            let mode = 'task';
+            let confidence = 0.5;
+            try {
+                const json = JSON.parse((modeResponse?.content || '').replace(/^\[SYSTEM\]\s*/,'').trim());
+                if (json && (json.mode === 'chat' || json.mode === 'task')) {
+                    mode = json.mode; confidence = json.confidence ?? 0.5;
+                }
+            } catch (_e) {
+                // Якщо відповів не JSON, спробуємо евристику
+                const txt = (modeResponse?.content || '').toLowerCase();
+                if (txt.includes('"mode":"chat"')) mode = 'chat';
+                if (txt.includes('"mode":"task"')) mode = 'task';
+            }
+            session.modeSelection = { mode, confidence };
+            // зберігаємо у meta останнього повідомлення
+            if (modeResponse) modeResponse.meta = { ...(modeResponse.meta||{}), modeSelection: { mode, confidence } };
+            session.history.push(modeResponse);
+
+            // Якщо CHAT -> запустимо atlas stage0_chat і завершимо
+            if (mode === 'chat') {
+                const chatStageCfg = WORKFLOW_STAGES.find(s => s.stage === 0 && s.agent === 'atlas');
+                if (chatStageCfg) {
+                    const promptsChat = await loadStagePrompts(0, 'atlas', 'stage0_chat', userMessage, session);
+                    const chatResp = await executeAgentStageStepByStep(
+                        'atlas',
+                        'stage0_chat',
+                        promptsChat.systemPrompt,
+                        promptsChat.userPrompt,
+                        session,
+                        res,
+                        { enableTools: false }
+                    );
+                    session.history.push(chatResp);
+                    // Завершуємо як звичайну відповідь без повного циклу
+                    if (!res.writableEnded) {
+                        res.write(JSON.stringify({ type: 'workflow_completed', data: { success: true, completed: true, mode: 'chat', session: { id: session.id, totalStages: session.history.length } } })+'\n');
+                        res.end();
+                    }
+                    return;
+                }
+            }
+            // Якщо TASK — продовжуємо звичайний пайплайн (старт зі stage 1)
+        }
+    } catch (e) {
+        logger.error(`Stage0 mode selection failed: ${e.message}`);
+        // Проста евристика: якщо привітання/бесіда — чат, інакше — завдання
+        const text = (userMessage || '').toLowerCase();
+        const chatIndicators = [
+            'привіт', 'вітаю', 'хай', 'як справи', 'як ти', 'розкажи', 'що таке', 'поясни',
+            'добрий день', 'добрий вечір', 'доброго дня', 'доброго вечора'
+        ];
+        const isChat = chatIndicators.some(k => text.includes(k));
+        session.modeSelection = { mode: isChat ? 'chat' : 'task', confidence: isChat ? 0.6 : 0.2 };
+        if (isChat) {
+            // Виконаємо чат-відповідь Атласа й завершимо
+            const promptsChat = await loadStagePrompts(0, 'atlas', 'stage0_chat', userMessage, session);
+            const chatResp = await executeAgentStageStepByStep(
+                'atlas', 'stage0_chat', promptsChat.systemPrompt, promptsChat.userPrompt, session, res, { enableTools: false }
+            );
+            session.history.push(chatResp);
+            if (!res.writableEnded) {
+                res.write(JSON.stringify({ type: 'workflow_completed', data: { success: true, completed: true, mode: 'chat', session: { id: session.id, totalStages: session.history.length } } })+'\n');
+                res.end();
+            }
+            return;
+        }
+    }
+
+    // Виконуємо етапи згідно конфігурації WORKFLOW_STAGES (починаючи від stage 1)
     for (const stageConfig of WORKFLOW_STAGES) {
+        if (stageConfig.stage === 0) continue; // вже виконано вище
         logMessage('info', `Processing stage ${stageConfig.stage}: ${stageConfig.agent} - ${stageConfig.name}`);
         
         // Перевіряємо чи потрібен цей етап
@@ -274,6 +360,22 @@ async function loadStagePrompts(stage, agent, name, userMessage, session) {
         let systemPrompt, userPrompt;
         
         switch (stage) {
+            case 0:
+                if (agent === 'system') {
+                    const sys0 = await import('../../prompts/system/stage0_mode_selection.js');
+                    return {
+                        systemPrompt: sys0.SYSTEM_STAGE0_SYSTEM_PROMPT,
+                        userPrompt: sys0.SYSTEM_STAGE0_USER_PROMPT(userMessage)
+                    };
+                }
+                if (agent === 'atlas') {
+                    const a0 = await import('../../prompts/atlas/stage0_chat.js');
+                    return {
+                        systemPrompt: a0.ATLAS_STAGE0_CHAT_SYSTEM_PROMPT,
+                        userPrompt: a0.ATLAS_STAGE0_CHAT_USER_PROMPT(userMessage)
+                    };
+                }
+                break;
             case 1: // Atlas initial_processing
                 const atlasStage1 = await import('../../prompts/atlas/stage1_initial_processing.js');
                 systemPrompt = atlasStage1.ATLAS_STAGE1_SYSTEM_PROMPT;

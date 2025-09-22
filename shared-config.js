@@ -52,11 +52,31 @@ export const AGENTS = {
 // Workflow етапи
 export const WORKFLOW_STAGES = [
     {
+        stage: 0,
+        agent: 'system',
+        name: 'stage0_mode_selection',
+        description: 'Системний класифікатор: спілкування чи завдання',
+        required: true,
+        maxRetries: 0,
+        expectedStates: ['chat', 'task']
+    },
+    {
+        stage: 0,
+        agent: 'atlas',
+        name: 'stage0_chat',
+        description: 'Atlas відповідає в режимі спілкування (чат)',
+        required: false,
+        condition: 'system_selected_chat',
+        maxRetries: 0,
+        expectedStates: ['chat_response']
+    },
+    {
         stage: 1,
         agent: 'atlas',
         name: 'stage1_initial_process',
         description: 'Atlas формалізує та структурує завдання',
-        required: true,
+        required: false,
+        condition: 'system_selected_task',
         maxRetries: 1,
         expectedStates: ['task_processed', 'needs_clarification']
     },
@@ -211,6 +231,7 @@ export function generateShortStatus(agent, stage, action) {
     const statusMessages = {
         atlas: {
             stage1_initial_processing: "Atlas аналізує ваш запит та готує завдання для Тетяни",
+            stage0_chat: "Atlas відповідає в режимі спілкування",
             stage3_clarification: "Atlas надає уточнення для Тетяни",
             stage6_task_adjustment: "Atlas коригує завдання на основі діагностики Гріші",
             stage9_retry_cycle: "Atlas координує новий цикл виконання"
@@ -224,6 +245,7 @@ export function generateShortStatus(agent, stage, action) {
             stage7_verification: "Гриша перевіряє результати виконання"
         },
         system: {
+            stage0_mode_selection: "Система визначає: чат чи завдання",
             stage8_completion: "Системне завершення workflow"
         }
     };

@@ -6,6 +6,26 @@
 import { analyzeAgentResponse } from '../ai/state-analyzer.js';
 
 export const WORKFLOW_CONDITIONS = {
+    async system_selected_chat(data) {
+        // Очікуємо результат класифікації у session.modeSelection
+        const session = data?.session;
+        const lastSystem = session?.history?.filter(r => r.agent === 'system').pop();
+        let mode = session?.modeSelection?.mode;
+        if (!mode && lastSystem?.meta?.modeSelection) {
+            mode = lastSystem.meta.modeSelection.mode;
+        }
+        return mode === 'chat';
+    },
+
+    async system_selected_task(data) {
+        const session = data?.session;
+        const lastSystem = session?.history?.filter(r => r.agent === 'system').pop();
+        let mode = session?.modeSelection?.mode;
+        if (!mode && lastSystem?.meta?.modeSelection) {
+            mode = lastSystem.meta.modeSelection.mode;
+        }
+        return mode === 'task';
+    },
     async tetyana_needs_clarification(data) {
         if (!data?.response?.content || data.response.agent !== 'tetyana') return false;
         const aiAnalysis = await analyzeAgentResponse('tetyana', data.response.content, 'execution');
