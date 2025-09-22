@@ -192,20 +192,14 @@ export class WhisperResultsManager {
 
         this.addResult(result);
         
-        // НЕ відправляємо відфільтровані результати в чат автоматично
-        // Користувач може вручну клікнути щоб відправити
+        // Автовідправка у чат, якщо доступний чат-менеджер і результат не відфільтрований
         if (text && text.trim() && !options.filtered && window.atlasChat) {
             try {
-                // Добавляем сообщение в чат как пользовательское
-                if (typeof window.atlasChat.addUserMessage === 'function') {
+                if (typeof window.atlasChat.sendMessage === 'function') {
+                    window.atlasChat.sendMessage(text.trim());
+                } else if (typeof window.atlasChat.addUserMessage === 'function') {
+                    // Фолбек: додати в інтерфейс, якщо пряме відправлення недоступне
                     window.atlasChat.addUserMessage(text.trim());
-                    
-                    // Отправляем сообщение через чат-менеджер
-                    if (typeof window.atlasChat.sendMessage === 'function') {
-                        window.atlasChat.sendMessage(text.trim());
-                    }
-                } else {
-                    console.warn('⚠️ window.atlasChat.addUserMessage is not a function');
                 }
             } catch (error) {
                 console.error('❌ Error adding whisper transcription to chat:', error);

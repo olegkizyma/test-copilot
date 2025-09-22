@@ -171,13 +171,17 @@ export class ChatManager {
         }
     }
 
-    async sendMessage() {
-        const input = this.inputElement?.value?.trim();
+    async sendMessage(message) {
+        // Підтримка як тексту з поля вводу, так і явного параметра
+        const input = (typeof message === 'string' && message.trim())
+            ? message.trim()
+            : this.inputElement?.value?.trim();
+
         if (!input || this.isStreaming) {
             return;
         }
 
-        // Очищаємо поле вводу
+        // Очищаємо поле вводу (для UX), навіть якщо текст прийшов параметром
         if (this.inputElement) {
             this.inputElement.value = '';
         }
